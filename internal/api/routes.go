@@ -1,30 +1,21 @@
 package api
 
 import (
-	"database/sql"
-	"encoding/json"
-	"fmt"
-	"io"
-	"strconv"
-	"strings"
-	"time"
+    "pos-backend/internal/database"
+    "pos-backend/internal/handlers"
+    "pos-backend/internal/middleware"
 
-	"pos-backend/internal/handlers"
-	"pos-backend/internal/middleware"
-	"pos-backend/internal/models"
-
-	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
+    "github.com/gin-gonic/gin"
 )
 
 // SetupRoutes configures all API routes
-func SetupRoutes(router *gin.RouterGroup, db *sql.DB, authMiddleware gin.HandlerFunc) {
-	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(db)
-	orderHandler := handlers.NewOrderHandler(db)
-	productHandler := handlers.NewProductHandler(db)
-	paymentHandler := handlers.NewPaymentHandler(db)
-	tableHandler := handlers.NewTableHandler(db)
+func SetupRoutes(router *gin.RouterGroup, mongoClient *database.MongoClient, authMiddleware gin.HandlerFunc) {
+    // Initialize handlers with MongoDB client
+    authHandler := handlers.NewAuthHandler(mongoClient)
+    orderHandler := handlers.NewOrderHandler(mongoClient)
+    productHandler := handlers.NewProductHandler(mongoClient)
+    paymentHandler := handlers.NewPaymentHandler(mongoClient)
+    tableHandler := handlers.NewTableHandler(mongoClient)
 
 	// Public routes (no authentication required)
 	public := router.Group("/")

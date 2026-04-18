@@ -1,87 +1,86 @@
 package main
 
 import (
-	"log"
-	"os"
+    "log"
+    "os"
 
-	"pos-backend/internal/api"
-	"pos-backend/internal/database"
-	"pos-backend/internal/middleware"
+    "pos-backend/internal/api"
+    "pos-backend/internal/database"
+    "pos-backend/internal/middleware"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
+    "github.com/gin-contrib/cors"
+    "github.com/gin-gonic/gin"
+    "github.com/joho/godotenv"
 )
 
 func main() {
-	// Load environment variables
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using environment variables")
-	}
+    // Load environment variables
+    if err := godotenv.Load(); err != nil {
+        log.Println("No .env file found, using environment variables")
+    }
 
-	// Database configuration
-	dbConfig := database.Config{
-		Host:     getEnv("DB_HOST", "postgres"),
-		Port:     getEnv("DB_PORT", "5432"),
-		User:     getEnv("DB_USER", "postgres"),
-		Password: getEnv("DB_PASSWORD", "postgres123"),
-		DBName:   getEnv("DB_NAME", "pos_system"),
-		SSLMode:  getEnv("DB_SSLMODE", "disable"),
-	}
+    // Connect to MongoDB Atlas
+    mongoURI := getEnv("MONGODB_URI", "mongodb+srv://admin:mantu1996@cluster0.ap02ozs.mongodb.net/?appName=Cluster0")
+    mongoDBName := getEnv("MONGODB_DATABASE", "pos_system")
+    
+    mongoClient, err := database.NewMongoClient(mongoURI, mongoDBName)
+    if err != nil {
+        log.Fatalf("Failed to connect to MongoDB: %v", err)
+    }
+    defer mongoClient.Close()
 
-	// Initialize database connection
-	db, err := database.Connect(dbConfig)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer db.Close()
+    log.Println("Successfully connected to MongoDB Atlas")
 
-	// Test database connection
-	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
-	}
+    // Initialize Gin router
+    gin.SetMode(getEnv("GIN_MODE", "release"))
+    router := gin.New()
 
-	log.Println("Successfully connected to database")
+    // Add middleware
+    router.Use(gin.Logger())
+    router.Use(gin.Recovery())
+    router.Use(cors.New(cors.Config{
+        AllowOrigins: []string{
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:3002",
+            "http://localhost:3003",
+            "http://localhost:5173",
+            "https://pos-system-c3c29.web.app",
+            "https://pos-system-c3c29.firebaseapp.com",
+        },
+        AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+        AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+        AllowCredentials: true,
+    }))
 
-	// Initialize Gin router
-	gin.SetMode(getEnv("GIN_MODE", "release"))
-	router := gin.New()
+    // Add authentication middleware
+    authMiddleware := middleware.AuthMiddleware()
 
-	// Add middleware
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003", "http://localhost:5173"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "accept", "origin", "Cache-Control", "X-Requested-With"},
-		AllowCredentials: true,
-	}))
+    // Health check endpoint
+    router.GET("/health", func(c *gin.Context) {
+        c.JSON(200, gin.H{
+            "status": "healthy",
+            "message": "POS API is running with MongoDB Atlas",
+            "database": "MongoDB",
+        })
+    })
 
-	// Add authentication middleware to protected routes
-	authMiddleware := middleware.AuthMiddleware()
+    // Initialize API routes (pass MongoDB client)
+    apiRoutes := router.Group("/api/v1")
+    api.SetupRoutes(apiRoutes, mongoClient, authMiddleware)
 
-	// Health check endpoint
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "healthy", "message": "POS API is running"})
-	})
+    // Start server
+    port := getEnv("PORT", "8080")
+    log.Printf("Starting server on port %s", port)
 
-	// Initialize API routes
-	apiRoutes := router.Group("/api/v1")
-	api.SetupRoutes(apiRoutes, db, authMiddleware)
-
-	// Start server
-	port := getEnv("PORT", "8080")
-	log.Printf("Starting server on port %s", port)
-
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
+    if err := router.Run(":" + port); err != nil {
+        log.Fatalf("Failed to start server: %v", err)
+    }
 }
 
 func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
+    if value := os.Getenv(key); value != "" {
+        return value
+    }
+    return defaultValue
 }
