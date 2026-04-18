@@ -44,6 +44,8 @@ func SetupRoutes(router *gin.RouterGroup, db *database.MongoDB, authMiddleware g
         protected.GET("/categories/:id/products", productHandler.GetProductsByCategory)
         protected.GET("/tables", tableHandler.GetTables)
         protected.GET("/tables/:id", tableHandler.GetTable)
+        protected.GET("/tables/by-location", tableHandler.GetTablesByLocation)
+        protected.GET("/tables/status", tableHandler.GetTableStatus)
         protected.GET("/orders", orderHandler.GetOrders)
         protected.GET("/orders/:id", orderHandler.GetOrder)
         protected.PATCH("/orders/:id/status", orderHandler.UpdateOrderStatus)
@@ -52,17 +54,19 @@ func SetupRoutes(router *gin.RouterGroup, db *database.MongoDB, authMiddleware g
     }
 
     // Server routes (server role - dine-in orders only)
+    // Admin also has access
     server := router.Group("/server")
     server.Use(authMiddleware)
-    server.Use(middleware.RequireRole("server"))
+    server.Use(middleware.RequireRoles([]string{"server", "admin"}))
     {
         server.POST("/orders", createDineInOrder(db))
     }
 
     // Counter routes (counter role - all order types and payments)
+    // Admin also has access
     counter := router.Group("/counter")
     counter.Use(authMiddleware)
-    counter.Use(middleware.RequireRole("counter"))
+    counter.Use(middleware.RequireRoles([]string{"counter", "admin"}))
     {
         counter.POST("/orders", orderHandler.CreateOrder)
         counter.POST("/orders/:id/payments", paymentHandler.ProcessPayment)
@@ -77,6 +81,16 @@ func SetupRoutes(router *gin.RouterGroup, db *database.MongoDB, authMiddleware g
         admin.GET("/reports/sales", getSalesReport(db))
         admin.GET("/reports/orders", getOrdersReport(db))
         admin.GET("/reports/income", getIncomeReport(db))
+    }
+
+    // Kitchen routes (kitchen staff access)
+    // Admin and manager also have access
+    kitchen := router.Group("/kitchen")
+    kitchen.Use(authMiddleware)
+    kitchen.Use(middleware.RequireRoles([]string{"kitchen", "admin", "manager"}))
+    {
+        kitchen.GET("/orders", getKitchenOrders(db))
+        kitchen.PATCH("/orders/:id/items/:item_id/status", updateOrderItemStatus(db))
     }
 }
 
@@ -97,11 +111,11 @@ func getDashboardStats(db *database.MongoDB) gin.HandlerFunc {
         
         // Today's revenue
         matchStage := bson.D{{Key: "$match", Value: bson.M{
-            "status": "completed",
+            "status":     "completed",
             "created_at": bson.M{"$gte": startOfDay},
         }}}
         groupStage := bson.D{{Key: "$group", Value: bson.M{
-            "_id": nil,
+            "_id":   nil,
             "total": bson.M{"$sum": "$total_amount"},
         }}}
         
@@ -159,14 +173,14 @@ func getSalesReport(db *database.MongoDB) gin.HandlerFunc {
         defer cancel()
         
         matchStage := bson.D{{Key: "$match", Value: bson.M{
-            "status": "completed",
+            "status":     "completed",
             "created_at": bson.M{"$gte": startDate},
         }}}
         
         groupStage := bson.D{{Key: "$group", Value: bson.M{
-            "_id": bson.M{"$dateToString": bson.M{"format": "%Y-%m-%d", "date": "$created_at"}},
+            "_id":         bson.M{"$dateToString": bson.M{"format": "%Y-%m-%d", "date": "$created_at"}},
             "order_count": bson.M{"$sum": 1},
-            "revenue": bson.M{"$sum": "$total_amount"},
+            "revenue":     bson.M{"$sum": "$total_amount"},
         }}}
         
         sortStage := bson.D{{Key: "$sort", Value: bson.M{"_id": -1}}}
@@ -215,8 +229,8 @@ func getOrdersReport(db *database.MongoDB) gin.HandlerFunc {
         }}}
         
         groupStage := bson.D{{Key: "$group", Value: bson.M{
-            "_id": "$status",
-            "count": bson.M{"$sum": 1},
+            "_id":        "$status",
+            "count":      bson.M{"$sum": 1},
             "avg_amount": bson.M{"$avg": "$total_amount"},
         }}}
         
@@ -252,6 +266,151 @@ func getOrdersReport(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// Kitchen orders handler
+func getKitchenOrders(db *database.MongoDB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        status := c.DefaultQuery("status", "all")
+        
+        collection := db.GetCollection("orders")
+        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        defer cancel()
+        
+        filter := bson.M{
+            "status": bson.M{"$in": []string{"confirmed", "preparing", "ready"}},
+        }
+        
+        if status != "all" {
+            filter["status"] = status
+        }
+        
+        cursor, err := collection.Find(ctx, filter)
+        if err != nil {
+            c.JSON(500, gin.H{
+                "success": false,
+                "message": "Failed to fetch kitchen orders",
+                "error":   err.Error(),
+            })
+            return
+        }
+        defer cursor.Close(ctx)
+        
+        var orders []map[string]interface{}
+        for cursor.Next(ctx) {
+            var order bson.M
+            if err := cursor.Decode(&order); err != nil {
+                continue
+            }
+            orders = append(orders, map[string]interface{}{
+                "id":            order["order_id"],
+                "order_number":  order["order_number"],
+                "table_id":      order["table_id"],
+                "order_type":    order["order_type"],
+                "status":        order["status"],
+                "customer_name": order["customer_name"],
+                "created_at":    order["created_at"],
+            })
+        }
+        
+        c.JSON(200, gin.H{
+            "success": true,
+            "message": "Kitchen orders retrieved successfully",
+            "data":    orders,
+        })
+    }
+}
+
+// Update order item status handler
+func updateOrderItemStatus(db *database.MongoDB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        orderID := c.Param("id")
+        itemID := c.Param("item_id")
+
+        var req struct {
+            Status string `json:"status"`
+        }
+
+        if err := c.ShouldBindJSON(&req); err != nil {
+            c.JSON(400, gin.H{
+                "success": false,
+                "message": "Invalid request body",
+                "error":   err.Error(),
+            })
+            return
+        }
+
+        collection := db.GetCollection("orders")
+        ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+        defer cancel()
+
+        // Update order item status in the items array
+        update := bson.M{
+            "$set": bson.M{
+                "items.$[elem].status":     req.Status,
+                "items.$[elem].updated_at": time.Now(),
+            },
+        }
+        
+        arrayFilters := options.Update().SetArrayFilters(options.ArrayFilters{
+            Filters: []interface{}{bson.M{"elem.id": itemID}},
+        })
+        
+        _, err := collection.UpdateOne(ctx, bson.M{"order_id": orderID}, update, arrayFilters)
+        if err != nil {
+            c.JSON(500, gin.H{
+                "success": false,
+                "message": "Failed to update order item status",
+                "error":   err.Error(),
+            })
+            return
+        }
+
+        c.JSON(200, gin.H{
+            "success": true,
+            "message": "Order item status updated successfully",
+        })
+    }
+}
+
+// Server role handler - only allows dine-in orders
+func createDineInOrder(db *database.MongoDB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        var req struct {
+            TableID      *string `json:"table_id"`
+            CustomerName *string `json:"customer_name"`
+            Items        []struct {
+                ProductID           string  `json:"product_id"`
+                Quantity            int     `json:"quantity"`
+                SpecialInstructions *string `json:"special_instructions"`
+            } `json:"items"`
+            Notes *string `json:"notes"`
+        }
+
+        if err := c.ShouldBindJSON(&req); err != nil {
+            c.JSON(400, gin.H{
+                "success": false,
+                "message": "Invalid request body",
+                "error":   err.Error(),
+            })
+            return
+        }
+
+        orderHandler := handlers.NewOrderHandler(db)
+        
+        createOrderReq := map[string]interface{}{
+            "table_id":      req.TableID,
+            "customer_name": req.CustomerName,
+            "order_type":    "dine_in",
+            "items":         req.Items,
+            "notes":         req.Notes,
+        }
+
+        reqBytes, _ := json.Marshal(createOrderReq)
+        c.Request.Body = io.NopCloser(strings.NewReader(string(reqBytes)))
+
+        orderHandler.CreateOrder(c)
+    }
+}
+
 // Income report handler
 func getIncomeReport(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
@@ -281,16 +440,16 @@ func getIncomeReport(db *database.MongoDB) gin.HandlerFunc {
         defer cancel()
         
         matchStage := bson.D{{Key: "$match", Value: bson.M{
-            "status": "completed",
+            "status":     "completed",
             "created_at": bson.M{"$gte": startDate},
         }}}
         
         groupStage := bson.D{{Key: "$group", Value: bson.M{
-            "_id": bson.M{"$dateToString": bson.M{"format": dateFormat, "date": "$created_at"}},
-            "total_orders": bson.M{"$sum": 1},
-            "gross_income": bson.M{"$sum": "$total_amount"},
-            "tax_collected": bson.M{"$sum": "$tax_amount"},
-            "net_income": bson.M{"$sum": bson.M{"$subtract": []interface{}{"$total_amount", "$tax_amount"}}},
+            "_id":            bson.M{"$dateToString": bson.M{"format": dateFormat, "date": "$created_at"}},
+            "total_orders":   bson.M{"$sum": 1},
+            "gross_income":   bson.M{"$sum": "$total_amount"},
+            "tax_collected":  bson.M{"$sum": "$tax_amount"},
+            "net_income":     bson.M{"$sum": bson.M{"$subtract": []interface{}{"$total_amount", "$tax_amount"}}},
         }}}
         
         sortStage := bson.D{{Key: "$sort", Value: bson.M{"_id": -1}}}
@@ -338,10 +497,10 @@ func getIncomeReport(db *database.MongoDB) gin.HandlerFunc {
         
         result := map[string]interface{}{
             "summary": map[string]interface{}{
-                "total_orders":  totalOrders,
-                "gross_income":  totalGross,
-                "tax_collected": totalTax,
-                "net_income":    totalNet,
+                "total_orders":   totalOrders,
+                "gross_income":   totalGross,
+                "tax_collected":  totalTax,
+                "net_income":     totalNet,
             },
             "breakdown": breakdown,
             "period":    period,
@@ -352,46 +511,6 @@ func getIncomeReport(db *database.MongoDB) gin.HandlerFunc {
             "message": "Income report retrieved successfully",
             "data":    result,
         })
-    }
-}
-
-// Server role handler - only allows dine-in orders
-func createDineInOrder(db *database.MongoDB) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        var req struct {
-            TableID      *string `json:"table_id"`
-            CustomerName *string `json:"customer_name"`
-            Items        []struct {
-                ProductID           string  `json:"product_id"`
-                Quantity            int     `json:"quantity"`
-                SpecialInstructions *string `json:"special_instructions"`
-            } `json:"items"`
-            Notes *string `json:"notes"`
-        }
-
-        if err := c.ShouldBindJSON(&req); err != nil {
-            c.JSON(400, gin.H{
-                "success": false,
-                "message": "Invalid request body",
-                "error":   err.Error(),
-            })
-            return
-        }
-
-        orderHandler := handlers.NewOrderHandler(db)
-        
-        createOrderReq := map[string]interface{}{
-            "table_id":      req.TableID,
-            "customer_name": req.CustomerName,
-            "order_type":    "dine_in",
-            "items":         req.Items,
-            "notes":         req.Notes,
-        }
-
-        reqBytes, _ := json.Marshal(createOrderReq)
-        c.Request.Body = io.NopCloser(strings.NewReader(string(reqBytes)))
-
-        orderHandler.CreateOrder(c)
     }
 }
 
