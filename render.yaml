@@ -1,10 +1,12 @@
-# backend/render.yaml
+# render.yaml - Corrected version
 services:
   - type: web
     name: pos-backend
-    runtime: go
-    buildCommand: go build -o pos-backend .
-    startCommand: ./pos-backend
+    runtime: image
+    repo: https://github.com/yourusername/pos-system
+    branch: main
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: DB_HOST
         fromDatabase:
@@ -34,5 +36,5 @@ services:
 databases:
   - name: pos-database
     databaseName: pos_system
-    user: postgres
+    user: pos_user  # ✅ Changed from 'postgres' to 'pos_user'
     plan: free
