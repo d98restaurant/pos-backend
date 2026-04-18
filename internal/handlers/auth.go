@@ -10,8 +10,8 @@ import (
     "pos-backend/internal/models"
 
     "github.com/gin-gonic/gin"
+    "github.com/google/uuid"
     "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/bson/primitive"
     "golang.org/x/crypto/bcrypt"
 )
 
@@ -59,9 +59,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
         return
     }
 
-    // Convert to response format
+    // Convert ObjectID to UUID string
+    userUUID, _ := uuid.Parse(user.UserID)
+    if userUUID == uuid.Nil {
+        userUUID = uuid.New()
+    }
+
     responseUser := models.User{
-        ID:        parseObjectIDToUUID(user.ID),
+        ID:        userUUID,
         Username:  user.Username,
         Email:     user.Email,
         FirstName: user.FirstName,
@@ -120,7 +125,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
     }
 
     responseUser := models.User{
-        ID:        parseObjectIDToUUID(user.ID),
+        ID:        userID,
         Username:  user.Username,
         Email:     user.Email,
         FirstName: user.FirstName,
@@ -143,12 +148,4 @@ func (h *AuthHandler) Logout(c *gin.Context) {
         Success: true,
         Message: "Logout successful",
     })
-}
-
-func parseObjectIDToUUID(objID primitive.ObjectID) string {
-    return objID.Hex()
-}
-
-func stringPtr(s string) *string {
-    return &s
 }

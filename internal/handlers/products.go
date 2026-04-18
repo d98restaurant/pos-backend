@@ -11,7 +11,6 @@ import (
 
     "github.com/gin-gonic/gin"
     "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/bson/primitive"
     "go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -25,7 +24,6 @@ func NewProductHandler(db *database.MongoDB) *ProductHandler {
 
 // GetProducts retrieves all products with pagination and filtering
 func (h *ProductHandler) GetProducts(c *gin.Context) {
-    // Parse query parameters
     page := 1
     perPage := 50
     categoryID := c.Query("category_id")
@@ -46,7 +44,6 @@ func (h *ProductHandler) GetProducts(c *gin.Context) {
 
     offset := int64((page - 1) * perPage)
 
-    // Build filter
     filter := bson.M{}
     
     if categoryID != "" {
@@ -70,7 +67,6 @@ func (h *ProductHandler) GetProducts(c *gin.Context) {
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
-    // Count total records
     total, err := collection.CountDocuments(ctx, filter)
     if err != nil {
         c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -81,7 +77,6 @@ func (h *ProductHandler) GetProducts(c *gin.Context) {
         return
     }
 
-    // Find with pagination
     findOptions := options.Find()
     findOptions.SetSort(bson.D{{Key: "sort_order", Value: 1}, {Key: "name", Value: 1}})
     findOptions.SetLimit(int64(perPage))
@@ -237,8 +232,4 @@ func (h *ProductHandler) GetProductsByCategory(c *gin.Context) {
         Message: "Products retrieved successfully",
         Data:    products,
     })
-}
-
-func stringPtr(s string) *string {
-    return &s
 }

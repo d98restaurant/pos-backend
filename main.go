@@ -20,16 +20,16 @@ func main() {
     }
 
     // Connect to MongoDB Atlas
-    mongoURI := getEnv("MONGODB_URI", "mongodb+srv://admin:mantu1996@cluster0.ap02ozs.mongodb.net/?appName=Cluster0")
+    mongoURI := getEnv("MONGODB_URI", "mongodb+srv://admin:mantu1996@cluster0.ap02ozs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
     mongoDBName := getEnv("MONGODB_DATABASE", "pos_system")
     
-    mongoClient, err := database.NewMongoClient(mongoURI, mongoDBName)
+    mongoDB, err := database.ConnectMongoDB(mongoURI, mongoDBName)
     if err != nil {
         log.Fatalf("Failed to connect to MongoDB: %v", err)
     }
-    defer mongoClient.Close()
+    defer mongoDB.Close()
 
-    log.Println("Successfully connected to MongoDB Atlas")
+    log.Println("✅ Successfully connected to MongoDB Atlas")
 
     // Initialize Gin router
     gin.SetMode(getEnv("GIN_MODE", "release"))
@@ -59,15 +59,14 @@ func main() {
     // Health check endpoint
     router.GET("/health", func(c *gin.Context) {
         c.JSON(200, gin.H{
-            "status": "healthy",
+            "status":  "healthy",
             "message": "POS API is running with MongoDB Atlas",
-            "database": "MongoDB",
         })
     })
 
-    // Initialize API routes (pass MongoDB client)
+    // Initialize API routes
     apiRoutes := router.Group("/api/v1")
-    api.SetupRoutes(apiRoutes, mongoClient, authMiddleware)
+    api.SetupRoutes(apiRoutes, mongoDB, authMiddleware)
 
     // Start server
     port := getEnv("PORT", "8080")

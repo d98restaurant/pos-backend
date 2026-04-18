@@ -3,241 +3,135 @@ package models
 import (
     "time"
     "github.com/google/uuid"
-    "go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// User represents a system user/staff member
+// User represents a system user/staff member (PostgreSQL)
 type User struct {
     ID           uuid.UUID `json:"id"`
     Username     string    `json:"username"`
     Email        string    `json:"email"`
-    PasswordHash string    `json:"-"` // Don't expose password hash in JSON
+    PasswordHash string    `json:"-"`
     FirstName    string    `json:"first_name"`
     LastName     string    `json:"last_name"`
-    Role         string    `json:"role"` // admin, manager, server, counter, kitchen
+    Role         string    `json:"role"`
     IsActive     bool      `json:"is_active"`
     CreatedAt    time.Time `json:"created_at"`
     UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// MongoUser represents a system user in MongoDB
+// MongoDB Models
 type MongoUser struct {
-    ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-    UserID       string             `bson:"user_id" json:"user_id"`
-    Username     string             `bson:"username" json:"username"`
-    Email        string             `bson:"email" json:"email"`
-    PasswordHash string             `bson:"password_hash" json:"-"`
-    FirstName    string             `bson:"first_name" json:"first_name"`
-    LastName     string             `bson:"last_name" json:"last_name"`
-    Role         string             `bson:"role" json:"role"`
-    IsActive     bool               `bson:"is_active" json:"is_active"`
-    CreatedAt    time.Time          `bson:"created_at" json:"created_at"`
-    UpdatedAt    time.Time          `bson:"updated_at" json:"updated_at"`
+    ID           string    `bson:"_id,omitempty" json:"id"`
+    UserID       string    `bson:"user_id" json:"user_id"`
+    Username     string    `bson:"username" json:"username"`
+    Email        string    `bson:"email" json:"email"`
+    PasswordHash string    `bson:"password_hash" json:"-"`
+    FirstName    string    `bson:"first_name" json:"first_name"`
+    LastName     string    `bson:"last_name" json:"last_name"`
+    Role         string    `bson:"role" json:"role"`
+    IsActive     bool      `bson:"is_active" json:"is_active"`
+    CreatedAt    time.Time `bson:"created_at" json:"created_at"`
+    UpdatedAt    time.Time `bson:"updated_at" json:"updated_at"`
 }
 
-// Category represents a product category
-type Category struct {
-    ID          uuid.UUID `json:"id"`
-    Name        string    `json:"name"`
-    Description *string   `json:"description"`
-    Color       *string   `json:"color"`
-    SortOrder   int       `json:"sort_order"`
-    IsActive    bool      `json:"is_active"`
-    CreatedAt   time.Time `json:"created_at"`
-    UpdatedAt   time.Time `json:"updated_at"`
-}
-
-// Product represents a menu item/product
-type Product struct {
-    ID              uuid.UUID  `json:"id"`
-    CategoryID      *uuid.UUID `json:"category_id"`
-    Name            string     `json:"name"`
-    Description     *string    `json:"description"`
-    Price           float64    `json:"price"`
-    ImageURL        *string    `json:"image_url"`
-    Barcode         *string    `json:"barcode"`
-    SKU             *string    `json:"sku"`
-    IsAvailable     bool       `json:"is_available"`
-    PreparationTime int        `json:"preparation_time"` // in minutes
-    SortOrder       int        `json:"sort_order"`
-    CreatedAt       time.Time  `json:"created_at"`
-    UpdatedAt       time.Time  `json:"updated_at"`
-    Category        *Category  `json:"category,omitempty"`
-}
-
-// MongoProduct represents a product in MongoDB
 type MongoProduct struct {
-    ID              primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-    ProductID       string             `bson:"product_id" json:"product_id"`
-    CategoryID      *string            `bson:"category_id,omitempty" json:"category_id"`
-    Name            string             `bson:"name" json:"name"`
-    Description     *string            `bson:"description,omitempty" json:"description"`
-    Price           float64            `bson:"price" json:"price"`
-    ImageURL        *string            `bson:"image_url,omitempty" json:"image_url"`
-    Barcode         *string            `bson:"barcode,omitempty" json:"barcode"`
-    SKU             *string            `bson:"sku,omitempty" json:"sku"`
-    IsAvailable     bool               `bson:"is_available" json:"is_available"`
-    PreparationTime int                `bson:"preparation_time" json:"preparation_time"`
-    SortOrder       int                `bson:"sort_order" json:"sort_order"`
-    CreatedAt       time.Time          `bson:"created_at" json:"created_at"`
-    UpdatedAt       time.Time          `bson:"updated_at" json:"updated_at"`
+    ID              string    `bson:"_id,omitempty" json:"id"`
+    ProductID       string    `bson:"product_id" json:"product_id"`
+    CategoryID      string    `bson:"category_id,omitempty" json:"category_id"`
+    Name            string    `bson:"name" json:"name"`
+    Description     string    `bson:"description,omitempty" json:"description"`
+    Price           float64   `bson:"price" json:"price"`
+    ImageURL        string    `bson:"image_url,omitempty" json:"image_url"`
+    Barcode         string    `bson:"barcode,omitempty" json:"barcode"`
+    SKU             string    `bson:"sku,omitempty" json:"sku"`
+    IsAvailable     bool      `bson:"is_available" json:"is_available"`
+    PreparationTime int       `bson:"preparation_time" json:"preparation_time"`
+    SortOrder       int       `bson:"sort_order" json:"sort_order"`
+    CreatedAt       time.Time `bson:"created_at" json:"created_at"`
+    UpdatedAt       time.Time `bson:"updated_at" json:"updated_at"`
 }
 
-// DiningTable represents a table or dining area
-type DiningTable struct {
-    ID              uuid.UUID `json:"id"`
-    TableNumber     string    `json:"table_number"`
-    SeatingCapacity int       `json:"seating_capacity"`
-    Location        *string   `json:"location"`
-    IsOccupied      bool      `json:"is_occupied"`
-    CreatedAt       time.Time `json:"created_at"`
-    UpdatedAt       time.Time `json:"updated_at"`
+type MongoCategory struct {
+    ID          string    `bson:"_id,omitempty" json:"id"`
+    CategoryID  string    `bson:"category_id" json:"category_id"`
+    Name        string    `bson:"name" json:"name"`
+    Description string    `bson:"description,omitempty" json:"description"`
+    Color       string    `bson:"color,omitempty" json:"color"`
+    SortOrder   int       `bson:"sort_order" json:"sort_order"`
+    IsActive    bool      `bson:"is_active" json:"is_active"`
+    CreatedAt   time.Time `bson:"created_at" json:"created_at"`
+    UpdatedAt   time.Time `bson:"updated_at" json:"updated_at"`
 }
 
-// Order represents a customer order
-type Order struct {
-    ID             uuid.UUID    `json:"id"`
-    OrderNumber    string       `json:"order_number"`
-    TableID        *uuid.UUID   `json:"table_id"`
-    UserID         *uuid.UUID   `json:"user_id"`
-    CustomerName   *string      `json:"customer_name"`
-    OrderType      string       `json:"order_type"` // dine_in, takeout, delivery
-    Status         string       `json:"status"`     // pending, confirmed, preparing, ready, served, completed, cancelled
-    Subtotal       float64      `json:"subtotal"`
-    TaxAmount      float64      `json:"tax_amount"`
-    DiscountAmount float64      `json:"discount_amount"`
-    TotalAmount    float64      `json:"total_amount"`
-    Notes          *string      `json:"notes"`
-    CreatedAt      time.Time    `json:"created_at"`
-    UpdatedAt      time.Time    `json:"updated_at"`
-    ServedAt       *time.Time   `json:"served_at"`
-    CompletedAt    *time.Time   `json:"completed_at"`
-    Table          *DiningTable `json:"table,omitempty"`
-    User           *User        `json:"user,omitempty"`
-    Items          []OrderItem  `json:"items,omitempty"`
-    Payments       []Payment    `json:"payments,omitempty"`
-}
-
-// MongoOrder represents an order in MongoDB
 type MongoOrder struct {
-    ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-    OrderID        string             `bson:"order_id" json:"order_id"`
-    OrderNumber    string             `bson:"order_number" json:"order_number"`
-    TableID        *string            `bson:"table_id,omitempty" json:"table_id"`
-    UserID         *string            `bson:"user_id,omitempty" json:"user_id"`
-    CustomerName   *string            `bson:"customer_name,omitempty" json:"customer_name"`
-    OrderType      string             `bson:"order_type" json:"order_type"`
-    Status         string             `bson:"status" json:"status"`
-    Subtotal       float64            `bson:"subtotal" json:"subtotal"`
-    TaxAmount      float64            `bson:"tax_amount" json:"tax_amount"`
-    DiscountAmount float64            `bson:"discount_amount" json:"discount_amount"`
-    TotalAmount    float64            `bson:"total_amount" json:"total_amount"`
-    Notes          *string            `bson:"notes,omitempty" json:"notes"`
-    CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
-    UpdatedAt      time.Time          `bson:"updated_at" json:"updated_at"`
-    ServedAt       *time.Time         `bson:"served_at,omitempty" json:"served_at"`
-    CompletedAt    *time.Time         `bson:"completed_at,omitempty" json:"completed_at"`
+    ID             string     `bson:"_id,omitempty" json:"id"`
+    OrderID        string     `bson:"order_id" json:"order_id"`
+    OrderNumber    string     `bson:"order_number" json:"order_number"`
+    TableID        string     `bson:"table_id,omitempty" json:"table_id"`
+    UserID         string     `bson:"user_id,omitempty" json:"user_id"`
+    CustomerName   string     `bson:"customer_name,omitempty" json:"customer_name"`
+    OrderType      string     `bson:"order_type" json:"order_type"`
+    Status         string     `bson:"status" json:"status"`
+    Subtotal       float64    `bson:"subtotal" json:"subtotal"`
+    TaxAmount      float64    `bson:"tax_amount" json:"tax_amount"`
+    DiscountAmount float64    `bson:"discount_amount" json:"discount_amount"`
+    TotalAmount    float64    `bson:"total_amount" json:"total_amount"`
+    Notes          string     `bson:"notes,omitempty" json:"notes"`
+    CreatedAt      time.Time  `bson:"created_at" json:"created_at"`
+    UpdatedAt      time.Time  `bson:"updated_at" json:"updated_at"`
+    ServedAt       *time.Time `bson:"served_at,omitempty" json:"served_at"`
+    CompletedAt    *time.Time `bson:"completed_at,omitempty" json:"completed_at"`
 }
 
-// OrderItem represents an item within an order
-type OrderItem struct {
-    ID                  uuid.UUID `json:"id"`
-    OrderID             uuid.UUID `json:"order_id"`
-    ProductID           uuid.UUID `json:"product_id"`
-    Quantity            int       `json:"quantity"`
-    UnitPrice           float64   `json:"unit_price"`
-    TotalPrice          float64   `json:"total_price"`
-    SpecialInstructions *string   `json:"special_instructions"`
-    Status              string    `json:"status"` // pending, preparing, ready, served
-    CreatedAt           time.Time `json:"created_at"`
-    UpdatedAt           time.Time `json:"updated_at"`
-    Product             *Product  `json:"product,omitempty"`
+type MongoTable struct {
+    ID              string    `bson:"_id,omitempty" json:"id"`
+    TableID         string    `bson:"table_id" json:"table_id"`
+    TableNumber     string    `bson:"table_number" json:"table_number"`
+    SeatingCapacity int       `bson:"seating_capacity" json:"seating_capacity"`
+    Location        string    `bson:"location,omitempty" json:"location"`
+    IsOccupied      bool      `bson:"is_occupied" json:"is_occupied"`
+    CreatedAt       time.Time `bson:"created_at" json:"created_at"`
+    UpdatedAt       time.Time `bson:"updated_at" json:"updated_at"`
 }
 
-// Payment represents a payment transaction
-type Payment struct {
-    ID              uuid.UUID  `json:"id"`
-    OrderID         uuid.UUID  `json:"order_id"`
-    PaymentMethod   string     `json:"payment_method"` // cash, credit_card, debit_card, digital_wallet
-    Amount          float64    `json:"amount"`
-    ReferenceNumber *string    `json:"reference_number"`
-    Status          string     `json:"status"` // pending, completed, failed, refunded
-    ProcessedBy     *uuid.UUID `json:"processed_by"`
-    ProcessedAt     *time.Time `json:"processed_at"`
-    CreatedAt       time.Time  `json:"created_at"`
-    ProcessedByUser *User      `json:"processed_by_user,omitempty"`
-}
-
-// Inventory represents product inventory
-type Inventory struct {
-    ID              uuid.UUID  `json:"id"`
-    ProductID       uuid.UUID  `json:"product_id"`
-    CurrentStock    int        `json:"current_stock"`
-    MinimumStock    int        `json:"minimum_stock"`
-    MaximumStock    int        `json:"maximum_stock"`
-    UnitCost        *float64   `json:"unit_cost"`
-    LastRestockedAt *time.Time `json:"last_restocked_at"`
-    CreatedAt       time.Time  `json:"created_at"`
-    UpdatedAt       time.Time  `json:"updated_at"`
-    Product         *Product   `json:"product,omitempty"`
-}
-
-// OrderStatusHistory tracks order status changes
-type OrderStatusHistory struct {
-    ID             uuid.UUID  `json:"id"`
-    OrderID        uuid.UUID  `json:"order_id"`
-    PreviousStatus *string    `json:"previous_status"`
-    NewStatus      string     `json:"new_status"`
-    ChangedBy      *uuid.UUID `json:"changed_by"`
-    Notes          *string    `json:"notes"`
-    CreatedAt      time.Time  `json:"created_at"`
-    ChangedByUser  *User      `json:"changed_by_user,omitempty"`
+type MongoPayment struct {
+    ID              string     `bson:"_id,omitempty" json:"id"`
+    PaymentID       string     `bson:"payment_id" json:"payment_id"`
+    OrderID         string     `bson:"order_id" json:"order_id"`
+    PaymentMethod   string     `bson:"payment_method" json:"payment_method"`
+    Amount          float64    `bson:"amount" json:"amount"`
+    ReferenceNumber string     `bson:"reference_number,omitempty" json:"reference_number"`
+    Status          string     `bson:"status" json:"status"`
+    ProcessedBy     string     `bson:"processed_by,omitempty" json:"processed_by"`
+    ProcessedAt     *time.Time `bson:"processed_at,omitempty" json:"processed_at"`
+    CreatedAt       time.Time  `bson:"created_at" json:"created_at"`
 }
 
 // Request/Response DTOs
-
-// CreateOrderRequest represents the request to create a new order
 type CreateOrderRequest struct {
-    TableID      *uuid.UUID        `json:"table_id"`
-    CustomerName *string           `json:"customer_name"`
-    OrderType    string            `json:"order_type"`
+    TableID      *string          `json:"table_id"`
+    CustomerName *string          `json:"customer_name"`
+    OrderType    string           `json:"order_type"`
     Items        []CreateOrderItem `json:"items"`
-    Notes        *string           `json:"notes"`
+    Notes        *string          `json:"notes"`
 }
 
-// CreateOrderItem represents an item in the order creation request
 type CreateOrderItem struct {
-    ProductID           uuid.UUID `json:"product_id"`
-    Quantity            int       `json:"quantity"`
-    SpecialInstructions *string   `json:"special_instructions"`
+    ProductID           string  `json:"product_id"`
+    Quantity            int     `json:"quantity"`
+    SpecialInstructions *string `json:"special_instructions"`
 }
 
-// UpdateOrderStatusRequest represents the request to update order status
-type UpdateOrderStatusRequest struct {
-    Status string  `json:"status"`
-    Notes  *string `json:"notes"`
-}
-
-// ProcessPaymentRequest represents the request to process a payment
-type ProcessPaymentRequest struct {
-    PaymentMethod   string  `json:"payment_method"`
-    Amount          float64 `json:"amount"`
-    ReferenceNumber *string `json:"reference_number"`
-}
-
-// LoginRequest represents the login request
 type LoginRequest struct {
     Username string `json:"username"`
     Password string `json:"password"`
 }
 
-// LoginResponse represents the login response
 type LoginResponse struct {
     Token string `json:"token"`
     User  User   `json:"user"`
 }
 
-// APIResponse represents a generic API response
 type APIResponse struct {
     Success bool        `json:"success"`
     Message string      `json:"message"`
@@ -245,7 +139,6 @@ type APIResponse struct {
     Error   *string     `json:"error,omitempty"`
 }
 
-// PaginatedResponse represents a paginated API response
 type PaginatedResponse struct {
     Success bool        `json:"success"`
     Message string      `json:"message"`
@@ -253,10 +146,15 @@ type PaginatedResponse struct {
     Meta    MetaData    `json:"meta"`
 }
 
-// MetaData represents pagination metadata
 type MetaData struct {
     CurrentPage int `json:"current_page"`
     PerPage     int `json:"per_page"`
     Total       int `json:"total"`
     TotalPages  int `json:"total_pages"`
+}
+
+type ProcessPaymentRequest struct {
+    PaymentMethod   string  `json:"payment_method"`
+    Amount          float64 `json:"amount"`
+    ReferenceNumber *string `json:"reference_number"`
 }
