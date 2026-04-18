@@ -16,10 +16,10 @@ import (
 )
 
 type AuthHandler struct {
-    db *database.MongoClient
+    db *database.MongoDB
 }
 
-func NewAuthHandler(db *database.MongoClient) *AuthHandler {
+func NewAuthHandler(db *database.MongoDB) *AuthHandler {
     return &AuthHandler{db: db}
 }
 
@@ -34,12 +34,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
         return
     }
 
-    // Get users collection
     collection := h.db.GetCollection("users")
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
-    // Find user by username
     var user models.MongoUser
     err := collection.FindOne(ctx, bson.M{"username": req.Username}).Decode(&user)
     
@@ -52,7 +50,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
         return
     }
 
-    // Verify password
     if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
         c.JSON(http.StatusUnauthorized, models.APIResponse{
             Success: false,
@@ -64,7 +61,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
     // Convert to response format
     responseUser := models.User{
-        ID:        user.ID.Hex(),
+        ID:        parseObjectIDToUUID(user.ID),
         Username:  user.Username,
         Email:     user.Email,
         FirstName: user.FirstName,
@@ -75,7 +72,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
         UpdatedAt: user.UpdatedAt,
     }
 
-    // Generate JWT token
     token, err := middleware.GenerateToken(&responseUser)
     if err != nil {
         c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -94,6 +90,63 @@ func (h *AuthHandler) Login(c *gin.Context) {
             User:  responseUser,
         },
     })
+}
+
+func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
+    userID, _, _, ok := middleware.GetUserFromContext(c)
+    if !ok {
+        c.JSON(http.StatusUnauthorized, models.APIResponse{
+            Success: false,
+            Message: "Authentication required",
+            Error:   stringPtr("auth_required"),
+        })
+        return
+    }
+
+    collection := h.db.GetCollection("users")
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    var user models.MongoUser
+    err := collection.FindOne(ctx, bson.M{"user_id": userID.String()}).Decode(&user)
+    
+    if err != nil {
+        c.JSON(http.StatusNotFound, models.APIResponse{
+            Success: false,
+            Message: "User not found",
+            Error:   stringPtr("user_not_found"),
+        })
+        return
+    }
+
+    responseUser := models.User{
+        ID:        parseObjectIDToUUID(user.ID),
+        Username:  user.Username,
+        Email:     user.Email,
+        FirstName: user.FirstName,
+        LastName:  user.LastName,
+        Role:      user.Role,
+        IsActive:  user.IsActive,
+        CreatedAt: user.CreatedAt,
+        UpdatedAt: user.UpdatedAt,
+    }
+
+    c.JSON(http.StatusOK, models.APIResponse{
+        Success: true,
+        Message: "User retrieved successfully",
+        Data:    responseUser,
+    })
+}
+
+func (h *AuthHandler) Logout(c *gin.Context) {
+    c.JSON(http.StatusOK, models.APIResponse{
+        Success: true,
+        Message: "Logout successful",
+    })
+}
+
+func parseObjectIDToUUID(objID primitive.ObjectID) string {
+    return objID.Hex()
 }
 
 func stringPtr(s string) *string {
