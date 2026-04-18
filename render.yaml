@@ -5,7 +5,7 @@ services:
     runtime: image
     repo: https://github.com/yourusername/pos-system
     branch: main
-    rootDir: backend
+    rootDir: .
     dockerfilePath: ./Dockerfile
     envVars:
       - key: DB_HOST
