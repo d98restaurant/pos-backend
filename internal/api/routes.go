@@ -1,21 +1,32 @@
 package api
 
 import (
-    "pos-backend/internal/database"
-    "pos-backend/internal/handlers"
-    "pos-backend/internal/middleware"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+	"time"
 
-    "github.com/gin-gonic/gin"
+	"pos-backend/internal/database"
+	"pos-backend/internal/handlers"
+	"pos-backend/internal/middleware"
+	"pos-backend/internal/models"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // SetupRoutes configures all API routes
 func SetupRoutes(router *gin.RouterGroup, mongoClient *database.MongoClient, authMiddleware gin.HandlerFunc) {
-    // Initialize handlers with MongoDB client
-    authHandler := handlers.NewAuthHandler(mongoClient)
-    orderHandler := handlers.NewOrderHandler(mongoClient)
-    productHandler := handlers.NewProductHandler(mongoClient)
-    paymentHandler := handlers.NewPaymentHandler(mongoClient)
-    tableHandler := handlers.NewTableHandler(mongoClient)
+	// Initialize handlers with MongoDB client
+	authHandler := handlers.NewAuthHandler(mongoClient)
+	orderHandler := handlers.NewOrderHandler(mongoClient)
+	productHandler := handlers.NewProductHandler(mongoClient)
+	paymentHandler := handlers.NewPaymentHandler(mongoClient)
+	tableHandler := handlers.NewTableHandler(mongoClient)
 
 	// Public routes (no authentication required)
 	public := router.Group("/")
@@ -54,12 +65,12 @@ func SetupRoutes(router *gin.RouterGroup, mongoClient *database.MongoClient, aut
 		protected.GET("/orders/:id/payment-summary", paymentHandler.GetPaymentSummary)
 	}
 
-	// Server routes (server role - dine-in orders only)
+	// Server routes (server and admin roles - dine-in orders only)
 	server := router.Group("/server")
 	server.Use(authMiddleware)
-	server.Use(middleware.RequireRole("server"))
+	server.Use(middleware.RequireRoles([]string{"server", "admin"})) // ✅ FIXED: Allow both server and admin
 	{
-		server.POST("/orders", createDineInOrder(db)) // Only dine-in orders
+		server.POST("/orders", createDineInOrder(mongoClient)) // Only dine-in orders
 	}
 
 	// Counter routes (counter role - all order types and payments)
@@ -77,32 +88,32 @@ func SetupRoutes(router *gin.RouterGroup, mongoClient *database.MongoClient, aut
 	admin.Use(middleware.RequireRoles([]string{"admin", "manager"}))
 	{
 		// Dashboard and monitoring
-		admin.GET("/dashboard/stats", getDashboardStats(db))
-		admin.GET("/reports/sales", getSalesReport(db))
-		admin.GET("/reports/orders", getOrdersReport(db))
-		admin.GET("/reports/income", getIncomeReport(db))
+		admin.GET("/dashboard/stats", getDashboardStats(mongoClient))
+		admin.GET("/reports/sales", getSalesReport(mongoClient))
+		admin.GET("/reports/orders", getOrdersReport(mongoClient))
+		admin.GET("/reports/income", getIncomeReport(mongoClient))
 
 		// Menu management with pagination
 		admin.GET("/products", productHandler.GetProducts) // Use existing paginated handler
-		admin.GET("/categories", getAdminCategories(db))   // Add pagination
-		admin.POST("/categories", createCategory(db))
-		admin.PUT("/categories/:id", updateCategory(db))
-		admin.DELETE("/categories/:id", deleteCategory(db))
-		admin.POST("/products", createProduct(db))
-		admin.PUT("/products/:id", updateProduct(db))
-		admin.DELETE("/products/:id", deleteProduct(db))
+		admin.GET("/categories", getAdminCategories(mongoClient))   // Add pagination
+		admin.POST("/categories", createCategory(mongoClient))
+		admin.PUT("/categories/:id", updateCategory(mongoClient))
+		admin.DELETE("/categories/:id", deleteCategory(mongoClient))
+		admin.POST("/products", createProduct(mongoClient))
+		admin.PUT("/products/:id", updateProduct(mongoClient))
+		admin.DELETE("/products/:id", deleteProduct(mongoClient))
 
 		// Table management with pagination
-		admin.GET("/tables", getAdminTables(db)) // Add pagination
-		admin.POST("/tables", createTable(db))
-		admin.PUT("/tables/:id", updateTable(db))
-		admin.DELETE("/tables/:id", deleteTable(db))
+		admin.GET("/tables", getAdminTables(mongoClient)) // Add pagination
+		admin.POST("/tables", createTable(mongoClient))
+		admin.PUT("/tables/:id", updateTable(mongoClient))
+		admin.DELETE("/tables/:id", deleteTable(mongoClient))
 
 		// User management with pagination
-		admin.GET("/users", getAdminUsers(db)) // Update with pagination
-		admin.POST("/users", createUser(db))
-		admin.PUT("/users/:id", updateUser(db))
-		admin.DELETE("/users/:id", deleteUser(db))
+		admin.GET("/users", getAdminUsers(mongoClient)) // Update with pagination
+		admin.POST("/users", createUser(mongoClient))
+		admin.PUT("/users/:id", updateUser(mongoClient))
+		admin.DELETE("/users/:id", deleteUser(mongoClient))
 
 		// Advanced order management
 		admin.POST("/orders", orderHandler.CreateOrder)                   // Admins can create any type of order
@@ -114,13 +125,13 @@ func SetupRoutes(router *gin.RouterGroup, mongoClient *database.MongoClient, aut
 	kitchen.Use(authMiddleware)
 	kitchen.Use(middleware.RequireRoles([]string{"kitchen", "admin", "manager"}))
 	{
-		kitchen.GET("/orders", getKitchenOrders(db))
-		kitchen.PATCH("/orders/:id/items/:item_id/status", updateOrderItemStatus(db))
+		kitchen.GET("/orders", getKitchenOrders(mongoClient))
+		kitchen.PATCH("/orders/:id/items/:item_id/status", updateOrderItemStatus(mongoClient))
 	}
 }
 
 // Dashboard stats handler
-func getDashboardStats(db *sql.DB) gin.HandlerFunc {
+func getDashboardStats(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get basic stats for dashboard
 		stats := make(map[string]interface{})
@@ -171,7 +182,7 @@ func getDashboardStats(db *sql.DB) gin.HandlerFunc {
 }
 
 // Sales report handler
-func getSalesReport(db *sql.DB) gin.HandlerFunc {
+func getSalesReport(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		period := c.DefaultQuery("period", "today") // today, week, month
 
@@ -246,7 +257,7 @@ func getSalesReport(db *sql.DB) gin.HandlerFunc {
 }
 
 // Orders report handler
-func getOrdersReport(db *sql.DB) gin.HandlerFunc {
+func getOrdersReport(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get order statistics
 		query := `
@@ -302,7 +313,7 @@ func getOrdersReport(db *sql.DB) gin.HandlerFunc {
 }
 
 // Kitchen orders handler
-func getKitchenOrders(db *sql.DB) gin.HandlerFunc {
+func getKitchenOrders(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status := c.DefaultQuery("status", "all")
 
@@ -372,7 +383,7 @@ func getKitchenOrders(db *sql.DB) gin.HandlerFunc {
 }
 
 // Update order item status handler
-func updateOrderItemStatus(db *sql.DB) gin.HandlerFunc {
+func updateOrderItemStatus(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		orderID := c.Param("id")
 		itemID := c.Param("item_id")
@@ -413,8 +424,8 @@ func updateOrderItemStatus(db *sql.DB) gin.HandlerFunc {
 	}
 }
 
-// Server role handler - only allows dine-in orders
-func createDineInOrder(db *sql.DB) gin.HandlerFunc {
+// Server role handler - only allows dine-in orders (now accessible by admin too)
+func createDineInOrder(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			TableID      *string `json:"table_id"`
@@ -457,7 +468,7 @@ func createDineInOrder(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Income report
-func getIncomeReport(db *sql.DB) gin.HandlerFunc {
+func getIncomeReport(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		period := c.DefaultQuery("period", "today") // today, week, month, year
 
@@ -585,7 +596,7 @@ func getIncomeReport(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Create category
-func createCategory(db *sql.DB) gin.HandlerFunc {
+func createCategory(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			Name        string  `json:"name" binding:"required"`
@@ -628,7 +639,7 @@ func createCategory(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Update category
-func updateCategory(db *sql.DB) gin.HandlerFunc {
+func updateCategory(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		categoryID := c.Param("id")
 
@@ -724,7 +735,7 @@ func updateCategory(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Delete category
-func deleteCategory(db *sql.DB) gin.HandlerFunc {
+func deleteCategory(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		categoryID := c.Param("id")
 
@@ -768,7 +779,7 @@ func deleteCategory(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Create product
-func createProduct(db *sql.DB) gin.HandlerFunc {
+func createProduct(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			CategoryID      *string `json:"category_id"`
@@ -816,7 +827,7 @@ func createProduct(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Update product
-func updateProduct(db *sql.DB) gin.HandlerFunc {
+func updateProduct(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		productID := c.Param("id")
 
@@ -942,7 +953,7 @@ func updateProduct(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Delete product
-func deleteProduct(db *sql.DB) gin.HandlerFunc {
+func deleteProduct(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		productID := c.Param("id")
 
@@ -991,7 +1002,7 @@ func deleteProduct(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Create table
-func createTable(db *sql.DB) gin.HandlerFunc {
+func createTable(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			TableNumber     string  `json:"table_number" binding:"required"`
@@ -1033,7 +1044,7 @@ func createTable(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Update table
-func updateTable(db *sql.DB) gin.HandlerFunc {
+func updateTable(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tableID := c.Param("id")
 
@@ -1123,7 +1134,7 @@ func updateTable(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Delete table
-func deleteTable(db *sql.DB) gin.HandlerFunc {
+func deleteTable(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tableID := c.Param("id")
 
@@ -1171,7 +1182,7 @@ func deleteTable(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Create user
-func createUser(db *sql.DB) gin.HandlerFunc {
+func createUser(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			Username  string `json:"username" binding:"required"`
@@ -1227,7 +1238,7 @@ func createUser(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Update user
-func updateUser(db *sql.DB) gin.HandlerFunc {
+func updateUser(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.Param("id")
 
@@ -1344,7 +1355,7 @@ func updateUser(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Delete user
-func deleteUser(db *sql.DB) gin.HandlerFunc {
+func deleteUser(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.Param("id")
 
@@ -1388,7 +1399,7 @@ func deleteUser(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Get users with pagination
-func getAdminUsers(db *sql.DB) gin.HandlerFunc {
+func getAdminUsers(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Parse pagination parameters
 		page := 1
@@ -1513,7 +1524,7 @@ func getAdminUsers(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Get categories with pagination
-func getAdminCategories(db *sql.DB) gin.HandlerFunc {
+func getAdminCategories(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Parse pagination parameters
 		page := 1
@@ -1620,7 +1631,7 @@ func getAdminCategories(db *sql.DB) gin.HandlerFunc {
 }
 
 // Admin handler - Get tables with pagination
-func getAdminTables(db *sql.DB) gin.HandlerFunc {
+func getAdminTables(db *database.MongoClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Parse pagination parameters
 		page := 1
