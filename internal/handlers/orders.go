@@ -214,14 +214,15 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     }
 
     ordersCollection := h.db.GetCollection("orders")
-    orderResult, err := ordersCollection.InsertOne(ctx, order)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, models.APIResponse{
-            Success: false,
-            Message: "Failed to create order",
-            Error:   stringPtr(err.Error()),
-        })
-        return
+_, err := ordersCollection.InsertOne(ctx, order)
+if err != nil {
+    c.JSON(http.StatusInternalServerError, models.APIResponse{
+        Success: false,
+        Message: "Failed to create order",
+        Error:   stringPtr(err.Error()),
+    })
+    return
+
     }
 
     itemsCollection := h.db.GetCollection("order_items")
