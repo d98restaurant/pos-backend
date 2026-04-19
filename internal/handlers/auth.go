@@ -11,7 +11,7 @@ import (
 
     "github.com/gin-gonic/gin"
     "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/bson/primitive"  // ADD THIS LINE
+    "go.mongodb.org/mongo-driver/bson/primitive"
     "golang.org/x/crypto/bcrypt"
 )
 
@@ -21,6 +21,18 @@ type AuthHandler struct {
 
 func NewAuthHandler(db *database.MongoDB) *AuthHandler {
     return &AuthHandler{db: db}
+}
+
+// Helper function to convert MongoDB DateTime to time.Time
+func toTime(t interface{}) time.Time {
+    switch v := t.(type) {
+    case time.Time:
+        return v
+    case primitive.DateTime:
+        return v.Time()
+    default:
+        return time.Now()
+    }
 }
 
 // Login handles user authentication
@@ -97,8 +109,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
         LastName:  user["last_name"].(string),
         Role:      user["role"].(string),
         IsActive:  user["is_active"].(bool),
-        CreatedAt: user["created_at"].(time.Time),
-        UpdatedAt: user["updated_at"].(time.Time),
+        CreatedAt: toTime(user["created_at"]),
+        UpdatedAt: toTime(user["updated_at"]),
     }
 
     token, err := middleware.GenerateToken(&responseUser)
@@ -168,8 +180,8 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
         LastName:  user["last_name"].(string),
         Role:      user["role"].(string),
         IsActive:  user["is_active"].(bool),
-        CreatedAt: user["created_at"].(time.Time),
-        UpdatedAt: user["updated_at"].(time.Time),
+        CreatedAt: toTime(user["created_at"]),
+        UpdatedAt: toTime(user["updated_at"]),
     }
 
     c.JSON(http.StatusOK, models.APIResponse{
