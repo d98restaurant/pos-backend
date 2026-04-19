@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: pos-backend
+    runtime: image
+    repo: https://github.com/yourusername/pos-system
+    branch: main
+    rootDir: .
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: MONGODB_URI
+        fromDatabase:
+          name: pos-mongodb
+          property: connectionString
+      - key: MONGODB_DATABASE
+        value: pos_system
+      - key: GIN_MODE
+        value: release
+      - key: PORT
+        value: 8080
+
+databases:
+  - name: pos-mongodb
+    databaseName: pos_system
+    plan: free
+    type: mongodb

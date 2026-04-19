@@ -1,0 +1,15 @@
+.git
+.gitignore
+README.md
+.env
+.env.local
+tmp/
+*.log
+*.test
+*.out
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+.DS_Store
