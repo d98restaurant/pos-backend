@@ -9,7 +9,6 @@ import (
 
     "github.com/gin-gonic/gin"
     "github.com/golang-jwt/jwt/v5"
-    "github.com/google/uuid"
 )
 
 // JWT Secret - In production, this should be loaded from environment variables
@@ -17,9 +16,9 @@ var jwtSecret = []byte("your-secret-key-change-this-in-production")
 
 // Claims represents the JWT claims
 type Claims struct {
-    UserID   uuid.UUID `json:"user_id"`
-    Username string    `json:"username"`
-    Role     string    `json:"role"`
+    UserID   string `json:"user_id"`
+    Username string `json:"username"`
+    Role     string `json:"role"`
     jwt.RegisteredClaims
 }
 
@@ -186,21 +185,21 @@ func RequireRoles(requiredRoles []string) gin.HandlerFunc {
 }
 
 // GetUserFromContext extracts user information from gin context
-func GetUserFromContext(c *gin.Context) (uuid.UUID, string, string, bool) {
+func GetUserFromContext(c *gin.Context) (string, string, string, bool) {
     userID, userIDExists := c.Get("user_id")
     username, usernameExists := c.Get("username")
     role, roleExists := c.Get("role")
 
     if !userIDExists || !usernameExists || !roleExists {
-        return uuid.Nil, "", "", false
+        return "", "", "", false
     }
 
-    id, idOk := userID.(uuid.UUID)
+    id, idOk := userID.(string)
     name, nameOk := username.(string)
     userRole, roleOk := role.(string)
 
     if !idOk || !nameOk || !roleOk {
-        return uuid.Nil, "", "", false
+        return "", "", "", false
     }
 
     return id, name, userRole, true

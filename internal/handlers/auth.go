@@ -10,8 +10,8 @@ import (
     "pos-backend/internal/models"
 
     "github.com/gin-gonic/gin"
-    "github.com/google/uuid"
     "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/bson/primitive"  // ADD THIS LINE
     "golang.org/x/crypto/bcrypt"
 )
 
@@ -79,7 +79,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
         return
     }
 
-    userID, _ := uuid.Parse(user["_id"].(string))
+    // Get the ObjectID as string
+    var userID string
+    if oid, ok := user["_id"].(primitive.ObjectID); ok {
+        userID = oid.Hex()
+    } else if id, ok := user["_id"].(string); ok {
+        userID = id
+    } else {
+        userID = ""
+    }
+
     responseUser := models.User{
         ID:        userID,
         Username:  user["username"].(string),
@@ -129,8 +138,9 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 
     collection := h.db.GetCollection("users")
     var user bson.M
-    err := collection.FindOne(ctx, bson.M{"_id": userID.String()}).Decode(&user)
-
+    
+    // Search by username
+    err := collection.FindOne(ctx, bson.M{"username": userID}).Decode(&user)
     if err != nil {
         c.JSON(http.StatusNotFound, models.APIResponse{
             Success: false,
@@ -140,8 +150,18 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
         return
     }
 
+    // Get the ObjectID as string
+    var responseUserID string
+    if oid, ok := user["_id"].(primitive.ObjectID); ok {
+        responseUserID = oid.Hex()
+    } else if id, ok := user["_id"].(string); ok {
+        responseUserID = id
+    } else {
+        responseUserID = ""
+    }
+
     responseUser := models.User{
-        ID:        userID,
+        ID:        responseUserID,
         Username:  user["username"].(string),
         Email:     user["email"].(string),
         FirstName: user["first_name"].(string),
