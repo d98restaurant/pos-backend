@@ -1,10 +1,5 @@
 package handlers
 
-import (
-    "time"
-    "go.mongodb.org/mongo-driver/bson/primitive"
-)
-
 // stringPtr returns a pointer to a string
 func stringPtr(s string) *string {
     return &s
@@ -23,16 +18,4 @@ func float64Ptr(f float64) *float64 {
 // boolPtr returns a pointer to a bool
 func boolPtr(b bool) *bool {
     return &b
-}
-
-// toTime converts MongoDB DateTime to time.Time
-func toTime(t interface{}) time.Time {
-    switch v := t.(type) {
-    case time.Time:
-        return v
-    case primitive.DateTime:
-        return v.Time()
-    default:
-        return time.Now()
-    }
 }
