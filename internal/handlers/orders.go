@@ -11,8 +11,8 @@ import (
     "pos-backend/internal/models"
 
     "github.com/gin-gonic/gin"
-    "github.com/google/uuid"
     "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/bson/primitive"
     "go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -153,7 +153,8 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
         return
     }
 
-    orderID := uuid.New().String()
+    // Generate ObjectID for order
+    orderID := primitive.NewObjectID()
     orderNumber := fmt.Sprintf("ORD%s%04d", time.Now().Format("20060102"), time.Now().UnixNano()%10000)
 
     var subtotal float64
@@ -164,7 +165,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     var orderItems []bson.M
     for _, item := range req.Items {
         var product bson.M
-        err := productsCollection.FindOne(ctx, bson.M{"_id": item.ProductID.String()}).Decode(&product)
+        err := productsCollection.FindOne(ctx, bson.M{"_id": item.ProductID}).Decode(&product)
         var price float64 = 0
         if err == nil {
             if p, ok := product["price"].(float64); ok {
@@ -175,7 +176,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
         subtotal += totalPrice
 
         orderItems = append(orderItems, bson.M{
-            "product_id":            item.ProductID.String(),
+            "product_id":            item.ProductID,
             "quantity":              item.Quantity,
             "unit_price":            price,
             "total_price":           totalPrice,
@@ -191,7 +192,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     totalAmount := subtotal + taxAmount
 
     order := bson.M{
-        "order_id":        orderID,
+        "_id":             orderID,
         "order_number":    orderNumber,
         "order_type":      req.OrderType,
         "status":          "pending",
@@ -200,13 +201,13 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
         "discount_amount": 0,
         "total_amount":    totalAmount,
         "notes":           req.Notes,
-        "user_id":         userID.String(),
+        "user_id":         userID,
         "created_at":      time.Now(),
         "updated_at":      time.Now(),
     }
 
     if req.TableID != nil {
-        order["table_id"] = req.TableID.String()
+        order["table_id"] = *req.TableID
     }
     if req.CustomerName != nil {
         order["customer_name"] = *req.CustomerName
@@ -225,19 +226,19 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 
     itemsCollection := h.db.GetCollection("order_items")
     for _, item := range orderItems {
-        item["order_id"] = orderResult.InsertedID
+        item["order_id"] = orderID.Hex()
         itemsCollection.InsertOne(ctx, item)
     }
 
     if req.OrderType == "dine_in" && req.TableID != nil {
         tablesCollection := h.db.GetCollection("tables")
         tablesCollection.UpdateOne(ctx,
-            bson.M{"_id": req.TableID.String()},
+            bson.M{"_id": *req.TableID},
             bson.M{"$set": bson.M{"is_occupied": true, "updated_at": time.Now()}},
         )
     }
 
-    order["_id"] = orderResult.InsertedID
+    order["_id"] = orderID.Hex()
 
     c.JSON(http.StatusCreated, models.APIResponse{
         Success: true,

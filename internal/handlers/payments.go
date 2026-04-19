@@ -10,8 +10,8 @@ import (
     "pos-backend/internal/models"
 
     "github.com/gin-gonic/gin"
-    "github.com/google/uuid"
     "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type PaymentHandler struct {
@@ -122,19 +122,19 @@ func (h *PaymentHandler) ProcessPayment(c *gin.Context) {
         return
     }
 
-    paymentID := uuid.New().String()
+    paymentID := primitive.NewObjectID()
     now := time.Now()
 
     payment := bson.M{
-        "payment_id":       paymentID,
-        "order_id":         orderID,
-        "payment_method":   req.PaymentMethod,
-        "amount":           req.Amount,
+        "_id":             paymentID,
+        "order_id":        orderID,
+        "payment_method":  req.PaymentMethod,
+        "amount":          req.Amount,
         "reference_number": req.ReferenceNumber,
-        "status":           "completed",
-        "processed_by":     userID.String(),
-        "processed_at":     now,
-        "created_at":       now,
+        "status":          "completed",
+        "processed_by":    userID,
+        "processed_at":    now,
+        "created_at":      now,
     }
 
     _, err = paymentsCollection.InsertOne(ctx, payment)
