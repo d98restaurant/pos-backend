@@ -157,7 +157,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     orderID := primitive.NewObjectID()
     orderNumber := fmt.Sprintf("ORD%s%04d", time.Now().Format("20060102"), time.Now().UnixNano()%10000)
 
-    var subtotal float64
+    var subtotal float64 = 0
     productsCollection := h.db.GetCollection("products")
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
@@ -166,17 +166,25 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     for _, item := range req.Items {
         var product bson.M
         err := productsCollection.FindOne(ctx, bson.M{"_id": item.ProductID}).Decode(&product)
+        
         var price float64 = 0
+        var productName string = "Unknown Product"
+        
         if err == nil {
             if p, ok := product["price"].(float64); ok {
                 price = p
             }
+            if n, ok := product["name"].(string); ok {
+                productName = n
+            }
         }
+        
         totalPrice := price * float64(item.Quantity)
         subtotal += totalPrice
 
         orderItems = append(orderItems, bson.M{
             "product_id":            item.ProductID,
+            "product_name":          productName,
             "quantity":              item.Quantity,
             "unit_price":            price,
             "total_price":           totalPrice,
@@ -187,15 +195,29 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
         })
     }
 
+    // Calculate taxes (10% tax rate)
     taxRate := 0.10
     taxAmount := subtotal * taxRate
     totalAmount := subtotal + taxAmount
+
+    // Set initial status based on order type
+    // For counter orders, set to "confirmed" so kitchen sees them
+    initialStatus := "confirmed"
+    
+    // Check if this is from counter or server
+    if c.FullPath() == "/counter/orders" {
+        initialStatus = "confirmed"
+    } else if c.FullPath() == "/server/orders" {
+        initialStatus = "confirmed"
+    } else {
+        initialStatus = "pending"
+    }
 
     order := bson.M{
         "_id":             orderID,
         "order_number":    orderNumber,
         "order_type":      req.OrderType,
-        "status":          "pending",
+        "status":          initialStatus,
         "subtotal":        subtotal,
         "tax_amount":      taxAmount,
         "discount_amount": 0,
@@ -214,23 +236,24 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     }
 
     ordersCollection := h.db.GetCollection("orders")
-_, err := ordersCollection.InsertOne(ctx, order)
-if err != nil {
-    c.JSON(http.StatusInternalServerError, models.APIResponse{
-        Success: false,
-        Message: "Failed to create order",
-        Error:   stringPtr(err.Error()),
-    })
-    return
-
+    _, err := ordersCollection.InsertOne(ctx, order)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, models.APIResponse{
+            Success: false,
+            Message: "Failed to create order",
+            Error:   stringPtr(err.Error()),
+        })
+        return
     }
 
+    // Insert order items
     itemsCollection := h.db.GetCollection("order_items")
     for _, item := range orderItems {
         item["order_id"] = orderID.Hex()
         itemsCollection.InsertOne(ctx, item)
     }
 
+    // Update table occupancy for dine-in orders
     if req.OrderType == "dine_in" && req.TableID != nil {
         tablesCollection := h.db.GetCollection("tables")
         tablesCollection.UpdateOne(ctx,
@@ -239,6 +262,7 @@ if err != nil {
         )
     }
 
+    // Return the created order with ID as string
     order["_id"] = orderID.Hex()
 
     c.JSON(http.StatusCreated, models.APIResponse{
@@ -298,6 +322,7 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
         return
     }
 
+    // If order is completed or cancelled, free the table
     if req.Status == "completed" || req.Status == "cancelled" {
         tablesCollection := h.db.GetCollection("tables")
         var order bson.M
