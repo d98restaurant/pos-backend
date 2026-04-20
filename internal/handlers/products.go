@@ -12,8 +12,8 @@ import (
 
     "github.com/gin-gonic/gin"
     "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/mongo/options"
     "go.mongodb.org/mongo-driver/bson/primitive"
+    "go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type ProductHandler struct {
@@ -395,15 +395,32 @@ func (h *ProductHandler) UpdateCategory(c *gin.Context) {
 }
 
 // DeleteCategory deletes a category
+// DeleteCategory deletes a category
 func (h *ProductHandler) DeleteCategory(c *gin.Context) {
     categoryID := c.Param("id")
+    
+    fmt.Printf("Attempting to delete category with ID: %s\n", categoryID)
 
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
     // First, check if there are products using this category
     productsCollection := h.db.GetCollection("products")
-    count, err := productsCollection.CountDocuments(ctx, bson.M{"category_id": categoryID})
+    
+    // Try to find by ObjectID or string
+    var filter bson.M
+    if len(categoryID) == 24 {
+        objID, err := primitive.ObjectIDFromHex(categoryID)
+        if err == nil {
+            filter = bson.M{"category_id": objID}
+        } else {
+            filter = bson.M{"category_id": categoryID}
+        }
+    } else {
+        filter = bson.M{"category_id": categoryID}
+    }
+    
+    count, err := productsCollection.CountDocuments(ctx, filter)
     if err != nil {
         c.JSON(http.StatusInternalServerError, models.APIResponse{
             Success: false,
@@ -422,9 +439,22 @@ func (h *ProductHandler) DeleteCategory(c *gin.Context) {
         return
     }
 
-    // If no products, delete the category
+    // Delete the category
     collection := h.db.GetCollection("categories")
-    result, err := collection.DeleteOne(ctx, bson.M{"_id": categoryID})
+    
+    var deleteFilter bson.M
+    if len(categoryID) == 24 {
+        objID, err := primitive.ObjectIDFromHex(categoryID)
+        if err == nil {
+            deleteFilter = bson.M{"_id": objID}
+        } else {
+            deleteFilter = bson.M{"_id": categoryID}
+        }
+    } else {
+        deleteFilter = bson.M{"_id": categoryID}
+    }
+    
+    result, err := collection.DeleteOne(ctx, deleteFilter)
 
     if err != nil {
         c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -438,7 +468,7 @@ func (h *ProductHandler) DeleteCategory(c *gin.Context) {
     if result.DeletedCount == 0 {
         c.JSON(http.StatusNotFound, models.APIResponse{
             Success: false,
-            Message: "Category not found",
+            Message: fmt.Sprintf("Category not found with ID: %s", categoryID),
             Error:   stringPtr("category_not_found"),
         })
         return
@@ -623,11 +653,45 @@ func (h *ProductHandler) UpdateProduct(c *gin.Context) {
 // DeleteProduct deletes a product
 func (h *ProductHandler) DeleteProduct(c *gin.Context) {
     productID := c.Param("id")
+    
+    fmt.Printf("Attempting to delete product with ID: %s\n", productID)
 
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
-    // First, check if product exists in any orders
+    // First, check if product exists
+    collection := h.db.GetCollection("products")
+    
+    // Try to find the product first
+    var filter bson.M
+    var objID primitive.ObjectID
+    var err error
+    
+    // Check if the ID is a valid ObjectID
+    if len(productID) == 24 {
+        objID, err = primitive.ObjectIDFromHex(productID)
+        if err == nil {
+            filter = bson.M{"_id": objID}
+        } else {
+            filter = bson.M{"_id": productID}
+        }
+    } else {
+        filter = bson.M{"_id": productID}
+    }
+    
+    // Check if product exists
+    var product bson.M
+    err = collection.FindOne(ctx, filter).Decode(&product)
+    if err != nil {
+        c.JSON(http.StatusNotFound, models.APIResponse{
+            Success: false,
+            Message: fmt.Sprintf("Product not found with ID: %s", productID),
+            Error:   stringPtr("product_not_found"),
+        })
+        return
+    }
+    
+    // Check if product exists in any orders
     orderItemsCollection := h.db.GetCollection("order_items")
     count, err := orderItemsCollection.CountDocuments(ctx, bson.M{"product_id": productID})
     if err != nil {
@@ -649,8 +713,7 @@ func (h *ProductHandler) DeleteProduct(c *gin.Context) {
     }
 
     // Delete the product
-    collection := h.db.GetCollection("products")
-    result, err := collection.DeleteOne(ctx, bson.M{"_id": productID})
+    result, err := collection.DeleteOne(ctx, filter)
 
     if err != nil {
         c.JSON(http.StatusInternalServerError, models.APIResponse{
