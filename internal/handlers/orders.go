@@ -86,6 +86,19 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
         return
     }
 
+    // Fetch order items for each order
+    itemsCollection := h.db.GetCollection("order_items")
+    for i, order := range orders {
+        orderID := order["_id"].(primitive.ObjectID).Hex()
+        cursor, err := itemsCollection.Find(ctx, bson.M{"order_id": orderID})
+        if err == nil {
+            var items []bson.M
+            cursor.All(ctx, &items)
+            orders[i]["items"] = items
+        }
+        cursor.Close(ctx)
+    }
+
     totalPages := (int(total) + perPage - 1) / perPage
 
     c.JSON(http.StatusOK, models.PaginatedResponse{
@@ -125,7 +138,7 @@ func splitString(s, sep string) []string {
     return result
 }
 
-// GetOrder retrieves a specific order by ID
+// GetOrder retrieves a specific order by ID with items
 func (h *OrderHandler) GetOrder(c *gin.Context) {
     orderID := c.Param("id")
 
@@ -144,6 +157,16 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
         })
         return
     }
+
+    // Fetch order items
+    itemsCollection := h.db.GetCollection("order_items")
+    cursor, err := itemsCollection.Find(ctx, bson.M{"order_id": orderID})
+    if err == nil {
+        var items []bson.M
+        cursor.All(ctx, &items)
+        order["items"] = items
+    }
+    cursor.Close(ctx)
 
     c.JSON(http.StatusOK, models.APIResponse{
         Success: true,
@@ -282,8 +305,9 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
         )
     }
 
-    // Return the created order with ID as string
+    // Return the created order with items
     order["_id"] = orderID.Hex()
+    order["items"] = orderItems
 
     c.JSON(http.StatusCreated, models.APIResponse{
         Success: true,
