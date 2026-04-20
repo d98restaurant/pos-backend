@@ -13,6 +13,7 @@ import (
     "github.com/gin-gonic/gin"
     "go.mongodb.org/mongo-driver/bson"
     "go.mongodb.org/mongo-driver/mongo/options"
+    "go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type ProductHandler struct {
@@ -512,8 +513,12 @@ func (h *ProductHandler) CreateProduct(c *gin.Context) {
 }
 
 // UpdateProduct updates an existing product
+// UpdateProduct updates an existing product
 func (h *ProductHandler) UpdateProduct(c *gin.Context) {
     productID := c.Param("id")
+    
+    // Log the ID for debugging
+    fmt.Printf("Updating product with ID: %s\n", productID)
 
     var req struct {
         CategoryID      *string  `json:"category_id"`
@@ -573,7 +578,23 @@ func (h *ProductHandler) UpdateProduct(c *gin.Context) {
     }
 
     collection := h.db.GetCollection("products")
-    result, err := collection.UpdateOne(ctx, bson.M{"_id": productID}, update)
+    
+    // Try to find by _id as ObjectID or as string
+    var filter bson.M
+    // Check if the ID is a valid ObjectID
+    if len(productID) == 24 {
+        // Try as ObjectID
+        objID, err := primitive.ObjectIDFromHex(productID)
+        if err == nil {
+            filter = bson.M{"_id": objID}
+        } else {
+            filter = bson.M{"_id": productID}
+        }
+    } else {
+        filter = bson.M{"_id": productID}
+    }
+    
+    result, err := collection.UpdateOne(ctx, filter, update)
 
     if err != nil {
         c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -587,7 +608,7 @@ func (h *ProductHandler) UpdateProduct(c *gin.Context) {
     if result.MatchedCount == 0 {
         c.JSON(http.StatusNotFound, models.APIResponse{
             Success: false,
-            Message: "Product not found",
+            Message: fmt.Sprintf("Product not found with ID: %s", productID),
             Error:   stringPtr("product_not_found"),
         })
         return
