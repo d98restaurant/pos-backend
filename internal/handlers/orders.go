@@ -216,37 +216,39 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     defer cancel()
 
     var orderItems []bson.M
-    for _, item := range req.Items {
-        var product bson.M
-        err := productsCollection.FindOne(ctx, bson.M{"_id": item.ProductID}).Decode(&product)
-        
-        var price float64 = 0
-        var productName string = "Unknown Product"
-        
-        if err == nil {
-            if p, ok := product["price"].(float64); ok {
-                price = p
-            }
-            if n, ok := product["name"].(string); ok {
-                productName = n
-            }
+    // In the CreateOrder function, update the orderItems creation:
+for _, item := range req.Items {
+    var product bson.M
+    err := productsCollection.FindOne(ctx, bson.M{"_id": item.ProductID}).Decode(&product)
+    
+    var price float64 = 0
+    var productName string = "Unknown Product"
+    
+    if err == nil {
+        if p, ok := product["price"].(float64); ok {
+            price = p
         }
-        
-        totalPrice := price * float64(item.Quantity)
-        subtotal += totalPrice
-
-        orderItems = append(orderItems, bson.M{
-            "product_id":            item.ProductID,
-            "product_name":          productName,
-            "quantity":              item.Quantity,
-            "unit_price":            price,
-            "total_price":           totalPrice,
-            "special_instructions":  item.SpecialInstructions,
-            "status":                "pending",
-            "created_at":            time.Now(),
-            "updated_at":            time.Now(),
-        })
+        if n, ok := product["name"].(string); ok {
+            productName = n
+        }
     }
+    
+    totalPrice := price * float64(item.Quantity)
+    subtotal += totalPrice
+
+    orderItems = append(orderItems, bson.M{
+        "product_id":            item.ProductID,
+        "product_name":          productName,  // Make sure this is set
+        "name":                  productName,  // Also store as name for easier access
+        "quantity":              item.Quantity,
+        "unit_price":            price,
+        "total_price":           totalPrice,
+        "special_instructions":  item.SpecialInstructions,
+        "status":                "pending",
+        "created_at":            time.Now(),
+        "updated_at":            time.Now(),
+    })
+}
 
     // Calculate taxes (10% tax rate)
     taxRate := 0.10
