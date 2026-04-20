@@ -399,6 +399,28 @@ func (h *ProductHandler) DeleteCategory(c *gin.Context) {
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
+    // First, check if there are products using this category
+    productsCollection := h.db.GetCollection("products")
+    count, err := productsCollection.CountDocuments(ctx, bson.M{"category_id": categoryID})
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, models.APIResponse{
+            Success: false,
+            Message: "Failed to check products in category",
+            Error:   stringPtr(err.Error()),
+        })
+        return
+    }
+
+    if count > 0 {
+        c.JSON(http.StatusBadRequest, models.APIResponse{
+            Success: false,
+            Message: "Cannot delete category with existing products. Please reassign or delete products first.",
+            Error:   stringPtr("category_has_products"),
+        })
+        return
+    }
+
+    // If no products, delete the category
     collection := h.db.GetCollection("categories")
     result, err := collection.DeleteOne(ctx, bson.M{"_id": categoryID})
 
