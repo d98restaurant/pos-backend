@@ -42,7 +42,6 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 
     filter := bson.M{}
     if status != "" {
-        // Handle comma-separated statuses
         statuses := splitStatuses(status)
         if len(statuses) > 1 {
             filter["status"] = bson.M{"$in": statuses}
@@ -96,7 +95,9 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
             cursor.All(ctx, &items)
             orders[i]["items"] = items
         }
-        cursor.Close(ctx)
+        if cursor != nil {
+            cursor.Close(ctx)
+        }
     }
 
     totalPages := (int(total) + perPage - 1) / perPage
@@ -114,7 +115,6 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
     })
 }
 
-// Helper function to split comma-separated statuses
 func splitStatuses(status string) []string {
     var result []string
     for _, s := range splitString(status, ",") {
@@ -166,7 +166,9 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
         cursor.All(ctx, &items)
         order["items"] = items
     }
-    cursor.Close(ctx)
+    if cursor != nil {
+        cursor.Close(ctx)
+    }
 
     c.JSON(http.StatusOK, models.APIResponse{
         Success: true,
@@ -215,40 +217,44 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
-    var orderItems []bson.M
-    // In the CreateOrder function, update the orderItems creation:
-for _, item := range req.Items {
-    var product bson.M
-    err := productsCollection.FindOne(ctx, bson.M{"_id": item.ProductID}).Decode(&product)
+    var orderItems []interface{}
     
-    var price float64 = 0
-    var productName string = "Unknown Product"
-    
-    if err == nil {
-        if p, ok := product["price"].(float64); ok {
-            price = p
+    for _, item := range req.Items {
+        var product bson.M
+        err := productsCollection.FindOne(ctx, bson.M{"_id": item.ProductID}).Decode(&product)
+        
+        var price float64 = 0
+        var productName string = "Unknown Product"
+        
+        if err == nil {
+            if p, ok := product["price"].(float64); ok {
+                price = p
+            }
+            if n, ok := product["name"].(string); ok {
+                productName = n
+            }
         }
-        if n, ok := product["name"].(string); ok {
-            productName = n
-        }
-    }
-    
-    totalPrice := price * float64(item.Quantity)
-    subtotal += totalPrice
+        
+        totalPrice := price * float64(item.Quantity)
+        subtotal += totalPrice
 
-    orderItems = append(orderItems, bson.M{
-        "product_id":            item.ProductID,
-        "product_name":          productName,  // Make sure this is set
-        "name":                  productName,  // Also store as name for easier access
-        "quantity":              item.Quantity,
-        "unit_price":            price,
-        "total_price":           totalPrice,
-        "special_instructions":  item.SpecialInstructions,
-        "status":                "pending",
-        "created_at":            time.Now(),
-        "updated_at":            time.Now(),
-    })
-}
+        // Create order item with all necessary fields
+        orderItem := bson.M{
+            "product_id":            item.ProductID,
+            "product_name":          productName,
+            "name":                  productName,
+            "quantity":              item.Quantity,
+            "unit_price":            price,
+            "total_price":           totalPrice,
+            "special_instructions":  item.SpecialInstructions,
+            "status":                "pending",
+            "order_id":              "", // Will be set after order is created
+            "created_at":            time.Now(),
+            "updated_at":            time.Now(),
+        }
+        
+        orderItems = append(orderItems, orderItem)
+    }
 
     // Calculate taxes (10% tax rate)
     taxRate := 0.10
@@ -258,6 +264,7 @@ for _, item := range req.Items {
     // Set status to "confirmed" so kitchen can see it
     initialStatus := "confirmed"
 
+    // Create order object
     order := bson.M{
         "_id":             orderID,
         "order_number":    orderNumber,
@@ -281,6 +288,8 @@ for _, item := range req.Items {
     }
 
     ordersCollection := h.db.GetCollection("orders")
+    
+    // Insert the order
     _, err := ordersCollection.InsertOne(ctx, order)
     if err != nil {
         c.JSON(http.StatusInternalServerError, models.APIResponse{
@@ -291,11 +300,17 @@ for _, item := range req.Items {
         return
     }
 
-    // Insert order items
+    // Insert order items with the order_id
     itemsCollection := h.db.GetCollection("order_items")
+    orderIDHex := orderID.Hex()
+    
     for _, item := range orderItems {
-        item["order_id"] = orderID.Hex()
-        itemsCollection.InsertOne(ctx, item)
+        itemMap := item.(bson.M)
+        itemMap["order_id"] = orderIDHex
+        _, err := itemsCollection.InsertOne(ctx, itemMap)
+        if err != nil {
+            fmt.Printf("Error inserting order item: %v\n", err)
+        }
     }
 
     // Update table occupancy for dine-in orders
@@ -308,8 +323,11 @@ for _, item := range req.Items {
     }
 
     // Return the created order with items
-    order["_id"] = orderID.Hex()
+    order["_id"] = orderIDHex
     order["items"] = orderItems
+
+    fmt.Printf("Order created successfully: %s with %d items, subtotal: %.2f, total: %.2f\n", 
+        orderNumber, len(orderItems), subtotal, totalAmount)
 
     c.JSON(http.StatusCreated, models.APIResponse{
         Success: true,
@@ -384,5 +402,56 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
     c.JSON(http.StatusOK, models.APIResponse{
         Success: true,
         Message: "Order status updated successfully",
+    })
+}
+
+// UpdateOrderItemStatus updates the status of an order item
+func (h *OrderHandler) UpdateOrderItemStatus(c *gin.Context) {
+    orderID := c.Param("id")
+    itemID := c.Param("item_id")
+
+    var req struct {
+        Status string `json:"status"`
+    }
+
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, models.APIResponse{
+            Success: false,
+            Message: "Invalid request body",
+            Error:   stringPtr(err.Error()),
+        })
+        return
+    }
+
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    collection := h.db.GetCollection("order_items")
+    result, err := collection.UpdateOne(ctx,
+        bson.M{"_id": itemID, "order_id": orderID},
+        bson.M{"$set": bson.M{"status": req.Status, "updated_at": time.Now()}},
+    )
+
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, models.APIResponse{
+            Success: false,
+            Message: "Failed to update order item status",
+            Error:   stringPtr(err.Error()),
+        })
+        return
+    }
+
+    if result.MatchedCount == 0 {
+        c.JSON(http.StatusNotFound, models.APIResponse{
+            Success: false,
+            Message: "Order item not found",
+            Error:   stringPtr("order_item_not_found"),
+        })
+        return
+    }
+
+    c.JSON(http.StatusOK, models.APIResponse{
+        Success: true,
+        Message: "Order item status updated successfully",
     })
 }
