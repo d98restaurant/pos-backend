@@ -42,7 +42,13 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 
     filter := bson.M{}
     if status != "" {
-        filter["status"] = status
+        // Handle comma-separated statuses
+        statuses := splitStatuses(status)
+        if len(statuses) > 1 {
+            filter["status"] = bson.M{"$in": statuses}
+        } else {
+            filter["status"] = status
+        }
     }
     if orderType != "" {
         filter["order_type"] = orderType
@@ -93,6 +99,30 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
             TotalPages:  totalPages,
         },
     })
+}
+
+// Helper function to split comma-separated statuses
+func splitStatuses(status string) []string {
+    var result []string
+    for _, s := range splitString(status, ",") {
+        if s != "" {
+            result = append(result, s)
+        }
+    }
+    return result
+}
+
+func splitString(s, sep string) []string {
+    var result []string
+    start := 0
+    for i := 0; i < len(s); i++ {
+        if s[i] == sep[0] {
+            result = append(result, s[start:i])
+            start = i + 1
+        }
+    }
+    result = append(result, s[start:])
+    return result
 }
 
 // GetOrder retrieves a specific order by ID
@@ -200,18 +230,8 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     taxAmount := subtotal * taxRate
     totalAmount := subtotal + taxAmount
 
-    // Set initial status based on order type
-    // For counter orders, set to "confirmed" so kitchen sees them
+    // Set status to "confirmed" so kitchen can see it
     initialStatus := "confirmed"
-    
-    // Check if this is from counter or server
-    if c.FullPath() == "/counter/orders" {
-        initialStatus = "confirmed"
-    } else if c.FullPath() == "/server/orders" {
-        initialStatus = "confirmed"
-    } else {
-        initialStatus = "pending"
-    }
 
     order := bson.M{
         "_id":             orderID,
