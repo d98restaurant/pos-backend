@@ -94,14 +94,13 @@ func SetupRoutes(router *gin.RouterGroup, db *database.MongoDB, authMiddleware g
         admin.POST("/orders/:id/payments", paymentHandler.ProcessPayment)
     }
 
-    // Kitchen routes - Allow kitchen, admin, and manager roles
-    kitchen := router.Group("/kitchen")
-    kitchen.Use(authMiddleware)
-    kitchen.Use(middleware.RequireRoles([]string{"kitchen", "admin", "manager"}))
-    {
-        kitchen.GET("/orders", getKitchenOrders(db))
-        kitchen.PATCH("/orders/:id/items/:item_id/status", updateOrderItemStatus(db))
-    }
+// Kitchen routes - Allow kitchen, admin, and manager roles
+kitchen := router.Group("/kitchen")
+kitchen.Use(authMiddleware)
+kitchen.Use(middleware.RequireRoles([]string{"kitchen", "admin", "manager"}))
+{
+    kitchen.GET("/orders", getKitchenOrders(db))
+    kitchen.PATCH("/orders/:id/items/:item_id/status", updateOrderItemStatus(db))
 }
 
 func getDashboardStats(db *database.MongoDB) gin.HandlerFunc {

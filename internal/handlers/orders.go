@@ -89,14 +89,14 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
     itemsCollection := h.db.GetCollection("order_items")
     for i, order := range orders {
         orderID := order["_id"].(primitive.ObjectID).Hex()
-        cursor, err := itemsCollection.Find(ctx, bson.M{"order_id": orderID})
+        itemCursor, err := itemsCollection.Find(ctx, bson.M{"order_id": orderID})
         if err == nil {
             var items []bson.M
-            cursor.All(ctx, &items)
+            itemCursor.All(ctx, &items)
             orders[i]["items"] = items
         }
-        if cursor != nil {
-            cursor.Close(ctx)
+        if itemCursor != nil {
+            itemCursor.Close(ctx)
         }
     }
 
@@ -117,24 +117,18 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 
 func splitStatuses(status string) []string {
     var result []string
-    for _, s := range splitString(status, ",") {
-        if s != "" {
-            result = append(result, s)
-        }
-    }
-    return result
-}
-
-func splitString(s, sep string) []string {
-    var result []string
     start := 0
-    for i := 0; i < len(s); i++ {
-        if s[i] == sep[0] {
-            result = append(result, s[start:i])
+    for i := 0; i < len(status); i++ {
+        if status[i] == ',' {
+            if i > start {
+                result = append(result, status[start:i])
+            }
             start = i + 1
         }
     }
-    result = append(result, s[start:])
+    if start < len(status) {
+        result = append(result, status[start:])
+    }
     return result
 }
 
@@ -160,14 +154,14 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 
     // Fetch order items
     itemsCollection := h.db.GetCollection("order_items")
-    cursor, err := itemsCollection.Find(ctx, bson.M{"order_id": orderID})
+    itemCursor, err := itemsCollection.Find(ctx, bson.M{"order_id": orderID})
     if err == nil {
         var items []bson.M
-        cursor.All(ctx, &items)
+        itemCursor.All(ctx, &items)
         order["items"] = items
     }
-    if cursor != nil {
-        cursor.Close(ctx)
+    if itemCursor != nil {
+        itemCursor.Close(ctx)
     }
 
     c.JSON(http.StatusOK, models.APIResponse{
@@ -219,7 +213,9 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 
     var orderItems []interface{}
     
-    for _, item := range req.Items {
+    fmt.Printf("Processing order with %d items\n", len(req.Items))
+    
+    for idx, item := range req.Items {
         var product bson.M
         err := productsCollection.FindOne(ctx, bson.M{"_id": item.ProductID}).Decode(&product)
         
@@ -233,6 +229,9 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
             if n, ok := product["name"].(string); ok {
                 productName = n
             }
+            fmt.Printf("Item %d: Product=%s, Price=%.2f, Quantity=%d\n", idx+1, productName, price, item.Quantity)
+        } else {
+            fmt.Printf("Item %d: Product not found for ID: %s\n", idx+1, item.ProductID)
         }
         
         totalPrice := price * float64(item.Quantity)
@@ -248,7 +247,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
             "total_price":           totalPrice,
             "special_instructions":  item.SpecialInstructions,
             "status":                "pending",
-            "order_id":              "", // Will be set after order is created
+            "order_id":              orderID.Hex(), // Set order_id immediately
             "created_at":            time.Now(),
             "updated_at":            time.Now(),
         }
@@ -260,6 +259,8 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     taxRate := 0.10
     taxAmount := subtotal * taxRate
     totalAmount := subtotal + taxAmount
+
+    fmt.Printf("Order totals: Subtotal=%.2f, Tax=%.2f, Total=%.2f\n", subtotal, taxAmount, totalAmount)
 
     // Set status to "confirmed" so kitchen can see it
     initialStatus := "confirmed"
@@ -292,6 +293,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     // Insert the order
     _, err := ordersCollection.InsertOne(ctx, order)
     if err != nil {
+        fmt.Printf("Error inserting order: %v\n", err)
         c.JSON(http.StatusInternalServerError, models.APIResponse{
             Success: false,
             Message: "Failed to create order",
@@ -300,18 +302,17 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
         return
     }
 
-    // Insert order items with the order_id
+    // Insert order items
     itemsCollection := h.db.GetCollection("order_items")
-    orderIDHex := orderID.Hex()
     
     for _, item := range orderItems {
-        itemMap := item.(bson.M)
-        itemMap["order_id"] = orderIDHex
-        _, err := itemsCollection.InsertOne(ctx, itemMap)
+        _, err := itemsCollection.InsertOne(ctx, item)
         if err != nil {
             fmt.Printf("Error inserting order item: %v\n", err)
         }
     }
+
+    fmt.Printf("Successfully inserted order %s with %d items\n", orderNumber, len(orderItems))
 
     // Update table occupancy for dine-in orders
     if req.OrderType == "dine_in" && req.TableID != nil {
@@ -323,11 +324,8 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
     }
 
     // Return the created order with items
-    order["_id"] = orderIDHex
+    order["_id"] = orderID.Hex()
     order["items"] = orderItems
-
-    fmt.Printf("Order created successfully: %s with %d items, subtotal: %.2f, total: %.2f\n", 
-        orderNumber, len(orderItems), subtotal, totalAmount)
 
     c.JSON(http.StatusCreated, models.APIResponse{
         Success: true,
