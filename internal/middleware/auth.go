@@ -126,7 +126,7 @@ func RequireRole(requiredRole string) gin.HandlerFunc {
         if !ok || userRole != requiredRole {
             c.JSON(http.StatusForbidden, models.APIResponse{
                 Success: false,
-                Message: "Insufficient permissions",
+                Message: "Insufficient permissions. Required role: " + requiredRole,
                 Error:   stringPtr("insufficient_permissions"),
             })
             c.Abort()
@@ -173,7 +173,7 @@ func RequireRoles(requiredRoles []string) gin.HandlerFunc {
         if !hasPermission {
             c.JSON(http.StatusForbidden, models.APIResponse{
                 Success: false,
-                Message: "Insufficient permissions",
+                Message: "Insufficient permissions. Required roles: " + strings.Join(requiredRoles, ", "),
                 Error:   stringPtr("insufficient_permissions"),
             })
             c.Abort()

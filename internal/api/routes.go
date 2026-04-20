@@ -48,21 +48,24 @@ func SetupRoutes(router *gin.RouterGroup, db *database.MongoDB, authMiddleware g
         protected.GET("/orders/:id/payment-summary", paymentHandler.GetPaymentSummary)
     }
 
+    // Server routes - Allow server, admin, and manager roles
     server := router.Group("/server")
     server.Use(authMiddleware)
-    server.Use(middleware.RequireRole("server"))
+    server.Use(middleware.RequireRoles([]string{"server", "admin", "manager"}))
     {
         server.POST("/orders", createDineInOrder(db))
     }
 
+    // Counter routes - Allow counter, admin, and manager roles
     counter := router.Group("/counter")
     counter.Use(authMiddleware)
-    counter.Use(middleware.RequireRole("counter"))
+    counter.Use(middleware.RequireRoles([]string{"counter", "admin", "manager"}))
     {
         counter.POST("/orders", orderHandler.CreateOrder)
         counter.POST("/orders/:id/payments", paymentHandler.ProcessPayment)
     }
 
+    // Admin routes - Only admin and manager
     admin := router.Group("/admin")
     admin.Use(authMiddleware)
     admin.Use(middleware.RequireRoles([]string{"admin", "manager"}))
@@ -91,6 +94,7 @@ func SetupRoutes(router *gin.RouterGroup, db *database.MongoDB, authMiddleware g
         admin.POST("/orders/:id/payments", paymentHandler.ProcessPayment)
     }
 
+    // Kitchen routes - Allow kitchen, admin, and manager roles
     kitchen := router.Group("/kitchen")
     kitchen.Use(authMiddleware)
     kitchen.Use(middleware.RequireRoles([]string{"kitchen", "admin", "manager"}))
