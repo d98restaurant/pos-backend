@@ -2,6 +2,7 @@ package handlers
 
 import (
     "context"
+    "fmt"
     "net/http"
     "strconv"
     "time"
@@ -414,7 +415,7 @@ func (h *ProductHandler) DeleteCategory(c *gin.Context) {
     if count > 0 {
         c.JSON(http.StatusBadRequest, models.APIResponse{
             Success: false,
-            Message: "Cannot delete category with existing products. Please reassign or delete products first.",
+            Message: fmt.Sprintf("Cannot delete category with %d product(s). Please reassign or delete products first.", count),
             Error:   stringPtr("category_has_products"),
         })
         return
@@ -605,6 +606,28 @@ func (h *ProductHandler) DeleteProduct(c *gin.Context) {
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
 
+    // First, check if product exists in any orders
+    orderItemsCollection := h.db.GetCollection("order_items")
+    count, err := orderItemsCollection.CountDocuments(ctx, bson.M{"product_id": productID})
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, models.APIResponse{
+            Success: false,
+            Message: "Failed to check product in orders",
+            Error:   stringPtr(err.Error()),
+        })
+        return
+    }
+
+    if count > 0 {
+        c.JSON(http.StatusBadRequest, models.APIResponse{
+            Success: false,
+            Message: fmt.Sprintf("Cannot delete product that has been ordered in %d order(s). Consider marking it as unavailable instead.", count),
+            Error:   stringPtr("product_has_orders"),
+        })
+        return
+    }
+
+    // Delete the product
     collection := h.db.GetCollection("products")
     result, err := collection.DeleteOne(ctx, bson.M{"_id": productID})
 
@@ -625,6 +648,10 @@ func (h *ProductHandler) DeleteProduct(c *gin.Context) {
         })
         return
     }
+
+    // Also delete from inventory if exists
+    inventoryCollection := h.db.GetCollection("inventory")
+    inventoryCollection.DeleteOne(ctx, bson.M{"product_id": productID})
 
     c.JSON(http.StatusOK, models.APIResponse{
         Success: true,
