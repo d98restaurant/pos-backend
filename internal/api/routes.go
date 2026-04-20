@@ -94,15 +94,17 @@ func SetupRoutes(router *gin.RouterGroup, db *database.MongoDB, authMiddleware g
         admin.POST("/orders/:id/payments", paymentHandler.ProcessPayment)
     }
 
-// Kitchen routes - Allow kitchen, admin, and manager roles
-kitchen := router.Group("/kitchen")
-kitchen.Use(authMiddleware)
-kitchen.Use(middleware.RequireRoles([]string{"kitchen", "admin", "manager"}))
-{
-    kitchen.GET("/orders", getKitchenOrders(db))
-    kitchen.PATCH("/orders/:id/items/:item_id/status", updateOrderItemStatus(db))
+    // Kitchen routes - Allow kitchen, admin, and manager roles
+    kitchen := router.Group("/kitchen")
+    kitchen.Use(authMiddleware)
+    kitchen.Use(middleware.RequireRoles([]string{"kitchen", "admin", "manager"}))
+    {
+        kitchen.GET("/orders", getKitchenOrders(db))
+        kitchen.PATCH("/orders/:id/items/:item_id/status", updateOrderItemStatus(db))
+    }
 }
 
+// getDashboardStats returns dashboard statistics
 func getDashboardStats(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -142,6 +144,7 @@ func getDashboardStats(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// getSalesReport returns sales report
 func getSalesReport(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         period := c.DefaultQuery("period", "today")
@@ -191,6 +194,7 @@ func getSalesReport(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// getOrdersReport returns orders report
 func getOrdersReport(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -226,6 +230,7 @@ func getOrdersReport(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// getIncomeReport returns income report
 func getIncomeReport(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         period := c.DefaultQuery("period", "today")
@@ -307,6 +312,7 @@ func getIncomeReport(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// getKitchenOrders returns orders for kitchen display
 func getKitchenOrders(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         status := c.DefaultQuery("status", "all")
@@ -346,6 +352,7 @@ func getKitchenOrders(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// updateOrderItemStatus updates the status of an order item
 func updateOrderItemStatus(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         orderID := c.Param("id")
@@ -378,6 +385,7 @@ func updateOrderItemStatus(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// createDineInOrder creates a dine-in order
 func createDineInOrder(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         var req struct {
@@ -413,6 +421,7 @@ func createDineInOrder(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// getAdminUsers returns all users for admin
 func getAdminUsers(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -433,6 +442,7 @@ func getAdminUsers(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// createUser creates a new user
 func createUser(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         var req struct {
@@ -473,6 +483,7 @@ func createUser(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// updateUser updates an existing user
 func updateUser(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         userID := c.Param("id")
@@ -502,6 +513,7 @@ func updateUser(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// deleteUser deletes a user
 func deleteUser(db *database.MongoDB) gin.HandlerFunc {
     return func(c *gin.Context) {
         userID := c.Param("id")
@@ -524,6 +536,7 @@ func deleteUser(db *database.MongoDB) gin.HandlerFunc {
     }
 }
 
+// toInt converts interface to int
 func toInt(v interface{}) int {
     switch val := v.(type) {
     case int:
@@ -539,6 +552,7 @@ func toInt(v interface{}) int {
     }
 }
 
+// toFloat64 converts interface to float64
 func toFloat64(v interface{}) float64 {
     switch val := v.(type) {
     case float64:
